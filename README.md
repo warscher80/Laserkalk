@@ -49,20 +49,49 @@ wählen. Danach läuft sie offline wie eine installierte App; der Service Worker
 
 ### Als echte Android-App (Capacitor)
 
-Gleiche Toolchain wie Spanwerk, aber eigene App-ID:
+Gleiche Toolchain wie Spanwerk, aber eigene App-ID `at.warscher.laserkalk`.
+Das Android-Projekt liegt in `laserkalk/android/` und ist im Repo enthalten.
 
-```bash
-npm install
-npx cap add android --config laserkalk/capacitor.config.json
-npx cap sync android --config laserkalk/capacitor.config.json
+**Wichtig:** Die Capacitor-CLI 8 kennt kein `--config`. Alle `cap`-Befehle
+müssen deshalb **aus dem Ordner `laserkalk/`** laufen — dort liegt die eigene
+`capacitor.config.json`. Aus dem Repo-Wurzelverzeichnis würde Capacitor die
+Spanwerk-Konfiguration verwenden.
+
+```powershell
+npm install                    # einmalig, im Repo-Wurzelverzeichnis
+
+cd laserkalk
+npx cap sync android           # Web-Assets ins Android-Projekt kopieren
 
 $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 $env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
-cd android; .\gradlew bundleRelease assembleRelease --no-daemon
+cd android
+.\gradlew assembleDebug        # Test-APK (Debug-Signatur)
+.\gradlew bundleRelease assembleRelease   # Store-Build, braucht keystore.properties
 ```
 
-Die App braucht **keine Berechtigungen** — die DXF-Auswahl läuft über das
-normale Dateifeld des WebViews.
+Ergebnisse:
+`android\app\build\outputs\apk\debug\app-debug.apk` bzw.
+`…\apk\release\app-release.apk` und `…\bundle\release\app-release.aab`.
+
+Nach Änderungen an Logo oder Farben `node icon-gen.js` ausführen — das
+erzeugt die PWA-Symbole **und** die Android-Launcher-Symbole und
+Startbildschirme neu.
+
+Bei App-Änderungen `versionCode` und `versionName` in
+`laserkalk/android/app/build.gradle` erhöhen (aktuell 1 / 1.0.0).
+
+Die App braucht **keine Berechtigungen** außer `INTERNET` (von Capacitor für
+den lokalen WebView-Server gesetzt) — die DXF-Auswahl läuft über das normale
+Dateifeld des WebViews.
+
+#### Signieren für den Store
+
+Ein Release-Build braucht einen eigenen Upload-Keystore für
+`at.warscher.laserkalk`. Der Spanwerk-Keystore gehört zu einer anderen
+App-ID und kann dafür **nicht** verwendet werden. Der Keystore und
+`laserkalk/android/keystore.properties` gehören nicht ins Repo
+(beide sind in `.gitignore`).
 
 ---
 

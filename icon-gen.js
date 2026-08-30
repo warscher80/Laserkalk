@@ -1,19 +1,31 @@
 /**
- * icon-gen.js — erzeugt die App-Symbole aus einer einzigen Beschreibung.
- * Ohne externe Abhängigkeiten: eigener kleiner Rasterizer + PNG-Encoder (zlib).
+ * icon-gen.js — erzeugt sämtliche Symbole und Startbildschirme aus EINER
+ * Beschreibung des Motivs. Ohne externe Abhängigkeiten: eigener kleiner
+ * Rasterizer plus PNG-Encoder über node:zlib.
  *
  *   node icon-gen.js
+ *
+ * Ausgabe:
+ *   www/icons                             PWA-Symbole (SVG + PNG 192/512/maskable)
+ *   android/app/src/main/res/mipmap-DICHTE    Launcher (klassisch, rund, adaptiv)
+ *   android/app/src/main/res/drawable-LAGE    Startbildschirme hoch und quer
+ *
+ * Die Android-Ausgabe wird übersprungen, wenn noch kein Android-Projekt
+ * angelegt ist (npx cap add android).
  */
 
 import { deflateSync } from 'node:zlib';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const AUS = join(dirname(fileURLToPath(import.meta.url)), 'www', 'icons');
-mkdirSync(AUS, { recursive: true });
+const WURZEL = dirname(fileURLToPath(import.meta.url));
+const ICONS = join(WURZEL, 'www', 'icons');
+const RES = join(WURZEL, 'android', 'app', 'src', 'main', 'res');
 
-/* ---------- PNG ---------- */
+/* ------------------------------------------------------------------ */
+/* PNG-Encoder                                                         */
+/* ------------------------------------------------------------------ */
 
 function crc32(buf) {
   let c, tabelle = crc32.t;
@@ -48,6 +60,7 @@ function schreibePng(pfad, breite, hoehe, rgba) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(breite, 0); ihdr.writeUInt32BE(hoehe, 4);
   ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  mkdirSync(dirname(pfad), { recursive: true });
   writeFileSync(pfad, Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr),
@@ -56,92 +69,159 @@ function schreibePng(pfad, breite, hoehe, rgba) {
   ]));
 }
 
-/* ---------- Zeichnen ---------- */
+/* ------------------------------------------------------------------ */
+/* Motiv                                                               */
+/* ------------------------------------------------------------------ */
 
-const SS = 4; // 4×4-Überabtastung für weiche Kanten
+const SS = 4;                       // 4x4-Überabtastung für weiche Kanten
+const HELL = [238, 242, 246];       // Grundfarbe der App im Hellmodus
 
-/** Beschreibt das Symbol in einem 100×100-Raster. Rückgabe: [r,g,b,a] 0..255 */
-function farbeAn(x, y, randRadius) {
-  // Hintergrund: abgerundetes Quadrat mit Verlauf
-  const r = randRadius;
-  const dx = Math.max(r - x, x - (100 - r), 0);
-  const dy = Math.max(r - y, y - (100 - r), 0);
-  if (Math.hypot(dx, dy) > r) return [0, 0, 0, 0];
+/** Mischt eine Farbe mit Deckkraft a in col hinein. */
+function misch(col, c, a) {
+  col[0] = Math.round(col[0] + (c[0] - col[0]) * a);
+  col[1] = Math.round(col[1] + (c[1] - col[1]) * a);
+  col[2] = Math.round(col[2] + (c[2] - col[2]) * a);
+}
 
-  const t = y / 100;
-  let col = [
-    Math.round(26 + (14 - 26) * t),
-    Math.round(37 + (19 - 37) * t),
-    Math.round(48 + (24 - 48) * t),
-  ];
-
-  const mische = (c, a) => { col = [
-    Math.round(col[0] + (c[0] - col[0]) * a),
-    Math.round(col[1] + (c[1] - col[1]) * a),
-    Math.round(col[2] + (c[2] - col[2]) * a),
-  ]; };
+/**
+ * Zeichnet das Motiv (Blech, Düse, Laserstrahl, Funken) in ein 100x100-Raster.
+ * Gibt true zurück, wenn an dieser Stelle etwas gezeichnet wurde — nötig für
+ * den adaptiven Vordergrund, der außerhalb des Motivs durchsichtig bleibt.
+ */
+function motiv(x, y, col) {
+  let getroffen = false;
+  const m = (c, a = 1) => { misch(col, c, a); getroffen = true; };
 
   // Glühen um den Auftreffpunkt
   const glut = Math.hypot(x - 50, y - 70);
-  if (glut < 26) mische([255, 147, 48], 0.30 * (1 - glut / 26) ** 2);
+  if (glut < 26) m([255, 147, 48], 0.30 * (1 - glut / 26) ** 2);
 
-  // Blech (waagrechter Balken)
-  if (y >= 72 && y <= 80 && x >= 12 && x <= 88) mische([150, 165, 180], 1);
-  if (y > 80 && y <= 84 && x >= 12 && x <= 88) mische([96, 110, 124], 1);
+  // Blech
+  if (y >= 72 && y <= 80 && x >= 12 && x <= 88) m([150, 165, 180]);
+  if (y > 80 && y <= 84 && x >= 12 && x <= 88) m([96, 110, 124]);
+  // Schnittfuge
+  if (y >= 72 && y <= 84 && Math.abs(x - 50) < 1.6) m([14, 19, 24]);
 
-  // Schnittfuge im Blech
-  if (y >= 72 && y <= 84 && Math.abs(x - 50) < 1.6) mische([14, 19, 24], 1);
-
-  // Düse (Trapez)
+  // Düse
   if (y >= 20 && y <= 44) {
     const halb = 15 - ((y - 20) / 24) * 8;
-    if (Math.abs(x - 50) <= halb) mische([190, 200, 212], 1);
-    if (Math.abs(x - 50) <= halb && x > 50) mische([132, 145, 160], 0.45);
+    if (Math.abs(x - 50) <= halb) {
+      m([190, 200, 212]);
+      if (x > 50) m([132, 145, 160], 0.45);
+    }
   }
-  // Düsenkopf
   if (y >= 44 && y <= 50) {
     const halb = 7 - ((y - 44) / 6) * 3.2;
-    if (Math.abs(x - 50) <= halb) mische([222, 230, 238], 1);
+    if (Math.abs(x - 50) <= halb) m([222, 230, 238]);
   }
 
   // Laserstrahl
   if (y >= 50 && y <= 74) {
     const d = Math.abs(x - 50);
-    if (d <= 1.9) mische([255, 236, 205], 1);
-    else if (d <= 4.2) mische([255, 147, 48], 1 - (d - 1.9) / 2.3);
+    if (d <= 1.9) m([255, 236, 205]);
+    else if (d <= 4.2) m([255, 147, 48], 1 - (d - 1.9) / 2.3);
   }
 
   // Funken
   for (const [fx, fy, fr] of [[41, 68, 2.1], [60, 66, 1.7], [37, 60, 1.3], [64, 58, 1.1], [55, 55, 0.9]]) {
-    if (Math.hypot(x - fx, y - fy) <= fr) mische([255, 190, 110], 1);
+    if (Math.hypot(x - fx, y - fy) <= fr) m([255, 190, 110]);
   }
-
-  return [col[0], col[1], col[2], 255];
+  return getroffen;
 }
 
-function rastere(groesse, randRadius) {
+/** Dunkle Kachel mit Verlauf; außerhalb der abgerundeten Ecken durchsichtig. */
+function kachel(x, y, radius) {
+  const dx = Math.max(radius - x, x - (100 - radius), 0);
+  const dy = Math.max(radius - y, y - (100 - radius), 0);
+  if (Math.hypot(dx, dy) > radius) return null;
+  const t = y / 100;
+  return [
+    Math.round(26 + (14 - 26) * t),
+    Math.round(37 + (19 - 37) * t),
+    Math.round(48 + (24 - 48) * t),
+  ];
+}
+
+/**
+ * Rastert ein quadratisches Bild.
+ * @param {number} groesse   Kantenlänge in Pixeln
+ * @param {object} o
+ *   o.art      'kachel' (dunkle Kachel + Motiv) | 'vordergrund' (nur Motiv) | 'hintergrund' (nur Kachel)
+ *   o.radius   Eckenradius in Prozent der Kantenlänge (50 = Kreis)
+ *   o.anteil   Anteil der Fläche, den das 100x100-Motiv einnimmt (1 = randlos)
+ */
+function rastere(groesse, o) {
+  const { art = 'kachel', radius = 22, anteil = 1 } = o;
   const buf = Buffer.alloc(groesse * groesse * 4);
+  const rand = (1 - anteil) / 2 * 100;
+
   for (let py = 0; py < groesse; py++) {
     for (let px = 0; px < groesse; px++) {
       let r = 0, g = 0, b = 0, a = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
-          const x = ((px + (sx + 0.5) / SS) / groesse) * 100;
-          const y = ((py + (sy + 0.5) / SS) / groesse) * 100;
-          const c = farbeAn(x, y, randRadius);
-          r += c[0] * c[3]; g += c[1] * c[3]; b += c[2] * c[3]; a += c[3];
+          // Bildkoordinaten in das 100x100-Motivraster umrechnen
+          const gx = ((px + (sx + 0.5) / SS) / groesse) * 100;
+          const gy = ((py + (sy + 0.5) / SS) / groesse) * 100;
+          const mx = (gx - rand) / anteil;
+          const my = (gy - rand) / anteil;
+
+          let col = null;
+          if (art === 'kachel' || art === 'hintergrund') {
+            col = kachel(gx, gy, art === 'hintergrund' ? 0 : radius);
+            if (col && art === 'kachel' && motiv(mx, my, col)) { /* Motiv liegt drauf */ }
+          } else {
+            const tmp = [0, 0, 0];
+            if (mx >= 0 && mx <= 100 && my >= 0 && my <= 100 && motiv(mx, my, tmp)) col = tmp;
+          }
+          if (col) { r += col[0]; g += col[1]; b += col[2]; a += 255; }
         }
       }
       const n = SS * SS;
       const i = (py * groesse + px) * 4;
-      if (a > 0) { buf[i] = Math.round(r / a); buf[i + 1] = Math.round(g / a); buf[i + 2] = Math.round(b / a); }
+      if (a > 0) {
+        const treffer = a / 255;
+        buf[i] = Math.round(r / treffer);
+        buf[i + 1] = Math.round(g / treffer);
+        buf[i + 2] = Math.round(b / treffer);
+      }
       buf[i + 3] = Math.round(a / n);
     }
   }
   return buf;
 }
 
-/* ---------- SVG ---------- */
+/** Startbildschirm: heller Grund, Symbol mittig. */
+function rastereSplash(breite, hoehe) {
+  const buf = Buffer.alloc(breite * hoehe * 4);
+  const kante = Math.round(Math.min(breite, hoehe) * 0.34);
+  const symbol = rastere(kante, { art: 'kachel', radius: 22 });
+  const x0 = Math.round((breite - kante) / 2);
+  const y0 = Math.round((hoehe - kante) / 2);
+
+  for (let y = 0; y < hoehe; y++) {
+    for (let x = 0; x < breite; x++) {
+      const i = (y * breite + x) * 4;
+      buf[i] = HELL[0]; buf[i + 1] = HELL[1]; buf[i + 2] = HELL[2]; buf[i + 3] = 255;
+    }
+  }
+  for (let y = 0; y < kante; y++) {
+    for (let x = 0; x < kante; x++) {
+      const s = (y * kante + x) * 4;
+      const alpha = symbol[s + 3] / 255;
+      if (!alpha) continue;
+      const zx = x0 + x, zy = y0 + y;
+      if (zx < 0 || zy < 0 || zx >= breite || zy >= hoehe) continue;
+      const z = (zy * breite + zx) * 4;
+      for (let k = 0; k < 3; k++) buf[z + k] = Math.round(buf[z + k] + (symbol[s + k] - buf[z + k]) * alpha);
+    }
+  }
+  return buf;
+}
+
+/* ------------------------------------------------------------------ */
+/* SVG                                                                 */
+/* ------------------------------------------------------------------ */
 
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="512" height="512">
   <defs>
@@ -169,13 +249,60 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width
 </svg>
 `;
 
-writeFileSync(join(AUS, 'icon.svg'), SVG);
-for (const [name, groesse, radius] of [
-  ['icon-192.png', 192, 22],
-  ['icon-512.png', 512, 22],
-  ['icon-maskable-512.png', 512, 50],   // maskable: voller Kreis, Motiv im sicheren Bereich
-]) {
-  schreibePng(join(AUS, name), groesse, groesse, rastere(groesse, radius));
-  console.log('erzeugt:', name);
+/* ------------------------------------------------------------------ */
+/* Erzeugen                                                            */
+/* ------------------------------------------------------------------ */
+
+let anzahl = 0;
+const png = (pfad, breite, hoehe, daten) => { schreibePng(pfad, breite, hoehe, daten); anzahl++; };
+
+/* --- PWA --- */
+mkdirSync(ICONS, { recursive: true });
+writeFileSync(join(ICONS, 'icon.svg'), SVG);
+png(join(ICONS, 'icon-192.png'), 192, 192, rastere(192, { radius: 22 }));
+png(join(ICONS, 'icon-512.png'), 512, 512, rastere(512, { radius: 22 }));
+// maskable: Motiv im sicheren Bereich (80 %), Kachel als Vollkreis
+png(join(ICONS, 'icon-maskable-512.png'), 512, 512, rastere(512, { radius: 50, anteil: 0.8 }));
+console.log('PWA-Symbole erzeugt');
+
+/* --- Android --- */
+if (!existsSync(RES)) {
+  console.log('Kein Android-Projekt gefunden (android/app/src/main/res) – Android-Assets übersprungen.');
+} else {
+  const DICHTEN = [['mdpi', 48, 108], ['hdpi', 72, 162], ['xhdpi', 96, 216], ['xxhdpi', 144, 324], ['xxxhdpi', 192, 432]];
+  for (const [d, klassisch, adaptiv] of DICHTEN) {
+    const ordner = join(RES, `mipmap-${d}`);
+    png(join(ordner, 'ic_launcher.png'), klassisch, klassisch, rastere(klassisch, { radius: 22 }));
+    png(join(ordner, 'ic_launcher_round.png'), klassisch, klassisch, rastere(klassisch, { radius: 50 }));
+    // Adaptiv: 108 dp Leinwand, Motiv im mittleren 72-dp-Bereich (= 2/3)
+    png(join(ordner, 'ic_launcher_foreground.png'), adaptiv, adaptiv, rastere(adaptiv, { art: 'vordergrund', anteil: 2 / 3 }));
+    png(join(ordner, 'ic_launcher_background.png'), adaptiv, adaptiv, rastere(adaptiv, { art: 'hintergrund' }));
+  }
+
+  // Der adaptive Hintergrund ist ein Bild, keine Farbe – sonst stünde das
+  // helle Motiv auf weißem Grund und wäre kaum zu erkennen.
+  const adaptivXml = `<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>
+`;
+  for (const name of ['ic_launcher.xml', 'ic_launcher_round.xml']) {
+    writeFileSync(join(RES, 'mipmap-anydpi-v26', name), adaptivXml);
+  }
+
+  const SPLASH = [
+    ['port', 'mdpi', 320, 480], ['port', 'hdpi', 480, 800], ['port', 'xhdpi', 720, 1280],
+    ['port', 'xxhdpi', 960, 1600], ['port', 'xxxhdpi', 1280, 1920],
+    ['land', 'mdpi', 480, 320], ['land', 'hdpi', 800, 480], ['land', 'xhdpi', 1280, 720],
+    ['land', 'xxhdpi', 1600, 960], ['land', 'xxxhdpi', 1920, 1280],
+  ];
+  for (const [lage, d, b, h] of SPLASH) {
+    png(join(RES, `drawable-${lage}-${d}`, 'splash.png'), b, h, rastereSplash(b, h));
+  }
+  png(join(RES, 'drawable', 'splash.png'), 480, 800, rastereSplash(480, 800));
+
+  console.log('Android-Symbole und Startbildschirme erzeugt');
 }
-console.log('erzeugt: icon.svg');
+
+console.log(`${anzahl} PNG-Dateien geschrieben.`);

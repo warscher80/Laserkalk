@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">LaserKalk</string>
+    <string name="title_activity_main">LaserKalk</string>
+    <string name="package_name">at.warscher.laserkalk</string>
+    <string name="custom_url_scheme">at.warscher.laserkalk</string>
+</resources>
