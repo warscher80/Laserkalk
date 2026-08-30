@@ -3,7 +3,9 @@
 Kalkulations-App für **Laserschneiden und Blechteile** in einem Metallbaubetrieb.
 Material · DXF-Auswertung · Zeiten · nachvollziehbarer Verkaufspreis.
 
-Vollständig offline, ohne Backend, ohne Tracking, ohne Berechtigungen.
+Rechnet vollständig offline, ohne Backend und ohne Tracking. Die einzige
+Netzverbindung ist die **Update-Prüfung** — ein einfacher Abruf einer kleinen
+Textdatei ohne Kennung, abschaltbar unter Einstellungen → Updates.
 Heller Hintergrund als Standard, Dunkelmodus unter Einstellungen → Darstellung.
 Sprache: Deutsch. Alle Preise und Sätze werden vom Betrieb selbst gepflegt.
 
@@ -23,6 +25,7 @@ Sprache: Deutsch. Alle Preise und Sätze werden vom Betrieb selbst gepflegt.
 | **Einstellungen** | Stundensätze, Aufschläge, Gewinnmodus, Bearbeitungsarten, Gase, Materialgruppen & Dichten, Schnittparameter, Maschinenkalkulation, DXF-Toleranzen |
 | **Kalkulationen** | Verlauf mit Suche, öffnen, bearbeiten, duplizieren, löschen |
 | **Backup** | Vollbackup JSON, Materialien und Kalkulationen einzeln als JSON und CSV (Excel), Wiederherstellung mit Prüfsumme |
+| **Updates** | Meldet neue Versionen; als Web-App aktualisiert sie sich selbst nach Bestätigung |
 
 Vorbereitet, aber bewusst noch nicht ausgeliefert: echtes Form-Nesting,
 Restblechverwaltung, Angebots-PDF, Kundendatenbank.
@@ -102,13 +105,62 @@ cd laserkalk
 node --test tests/*.test.js
 ```
 
-70 Tests über Geldrechnung, Kalkulationskern, Materialableitung,
-DXF-Parser und -Geometrie, Nesting, Maschinenkalkulation, Backup und CSV.
+86 Tests über Geldrechnung, Kalkulationskern, Materialableitung,
+DXF-Parser und -Geometrie, Nesting, Maschinenkalkulation, Backup, CSV und
+Update-Prüfung — darunter ein Wächter, der Alarm schlägt, wenn Version,
+Gradle-Datei und Service-Worker-Cache auseinanderlaufen.
 Sie laufen ohne Browser, weil Logik und Oberfläche getrennt sind.
 
 Enthalten ist unter anderem die Beispielrechnung aus der Anforderung
 (Material 30 € + 25 %, CAD 10 min, Laser 120 min, Entgraten 15 min):
 Ergebnis **125,42 € netto**, **12,54 € je Stück** — auf den Cent.
+
+---
+
+## Auto-Update
+
+Die App aktualisiert sich auf zwei Wegen — je nachdem, wie sie installiert ist.
+
+### Als Web-App / PWA: aktualisiert sich selbst
+
+Der Service Worker lädt eine neue Fassung im Hintergrund und meldet
+„Neue Version verfügbar". Übernommen wird sie **erst auf Knopfdruck** und mit
+genau einem Neuladen — nie mitten in einer offenen Kalkulation. Neu
+veröffentlichen heißt: Dateien hochladen, `CACHE` in `www/sw.js` erhöhen. Fertig.
+
+### Als installiertes APK: meldet neue Versionen
+
+Die App fragt eine kleine JSON-Datei ab und zeigt einen Hinweis, wenn dort eine
+höhere `versionCode` steht. Sie **installiert nichts von selbst** — Sie tippen
+auf „Herunterladen" und spielen das Paket wie gewohnt ein. Genau deshalb braucht
+die App keine Berechtigung zum Installieren von Apps.
+
+**Einrichten (einmalig):**
+
+1. `update.json` (Vorlage liegt im Projektordner) und das APK auf einen
+   Webserver legen, z. B. GitHub Pages:
+   ```json
+   {
+     "versionCode": 2,
+     "versionName": "1.0.1",
+     "apkUrl": "https://warscher80.github.io/…/LaserKalk-1.0.1.apk",
+     "hinweise": "Was neu ist",
+     "pflicht": false
+   }
+   ```
+2. In der App unter **Einstellungen → Updates** die Adresse der `update.json`
+   eintragen und einmal „Jetzt nach Updates suchen" drücken.
+
+**Bei jeder neuen Version:** `versionCode` und `versionName` in
+`android/app/build.gradle`, `www/js/core/version.js` und `CACHE` in `www/sw.js`
+erhöhen (`npm test` prüft, dass die drei zusammenpassen), APK bauen, APK und
+`update.json` hochladen.
+
+**Was übertragen wird:** ein GET auf die Update-Datei, ohne Cookies, ohne
+Kennung, ohne Angaben zu Gerät, Betrieb oder Kalkulationen. Prüfabstand
+standardmäßig 24 Stunden, abschaltbar. Downloadadressen werden nur über
+`https` akzeptiert. Läuft die App über den Play Store, übernimmt der Store das
+Aktualisieren — dann einfach keine Adresse eintragen.
 
 ---
 

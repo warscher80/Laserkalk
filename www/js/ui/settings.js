@@ -9,10 +9,12 @@ import {
   sheet, bestaetige, empty, leere, res,
 } from './components.js';
 import { store } from '../core/store.js';
-import { setzeTheme } from './app.js';
+import { setzeTheme, appUpdatePruefen, istNativeApp } from './app.js';
+import { APP_VERSION, versionText } from '../core/version.js';
+import { STATUS } from '../core/update.js';
 import { maschinenkosten, maschinenmarge } from '../calc/machine.js';
 import { eur, centStr, num as fmtNum } from '../core/money.js';
-import { uid } from '../core/util.js';
+import { uid, stampDe } from '../core/util.js';
 import { STORES } from '../core/db.js';
 import { baueBackup, leseBackup, materialienCsv, leseMaterialCsv, kalkulationenCsv, dateiname } from '../io/backup.js';
 import { speichereText, waehleDatei, leseDatei } from '../io/files.js';
@@ -26,6 +28,7 @@ const BEREICHE = [
   ['maschine', 'Maschinenkalkulation', 'Selbstkosten je Maschinenstunde prüfen'],
   ['dxf', 'DXF & Einheiten', 'Toleranzen, Standardeinheit, Flächenbasis'],
   ['backup', 'Backup & Export', 'Sichern, wiederherstellen, CSV/JSON'],
+  ['update', 'Updates', 'Automatisch nach neuen Versionen sehen'],
 ];
 
 export async function render(ctx) {
@@ -38,6 +41,7 @@ export async function render(ctx) {
   if (bereich === 'maschine') return maschine(ctx);
   if (bereich === 'dxf') return dxfEinstellungen(ctx);
   if (bereich === 'backup') return backup(ctx);
+  if (bereich === 'update') return updates(ctx);
   return uebersicht(ctx);
 }
 
@@ -66,7 +70,7 @@ function uebersicht(ctx) {
     ),
     h('.hint', { text: `Nächste Nummer: ${s.nummernPraefix || 'K'}-${new Date().getFullYear()}-${String(s.nummernZaehler || 1).padStart(4, '0')}` })));
 
-  el.appendChild(h('.hint.mt', { text: `LaserKalk Version 1.0 · Speicher: ${store.adapter.kind === 'indexeddb' ? 'Gerätedatenbank (IndexedDB)' : 'nur Arbeitsspeicher'}` }));
+  el.appendChild(h('.hint.mt', { text: `LaserKalk ${versionText()} · Speicher: ${store.adapter.kind === 'indexeddb' ? 'Gerätedatenbank (IndexedDB)' : 'nur Arbeitsspeicher'}` }));
 
   return { kopf: { titel: 'Einstellungen', zurueck: '/home' }, el };
 }
@@ -694,6 +698,119 @@ function backup(ctx) {
 
   return { kopf: { titel: 'Backup & Export', zurueck: '/settings' }, el };
 }
+
+/* ------------------------------------------------------------------ */
+
+function updates(ctx) {
+  const s = { ...store.settings };
+  const sichern = async (patch) => { Object.assign(s, patch); await store.setSettings(patch); };
+  const el = h('div');
+  const ergebnisBox = h('div');
+  const einstellBox = h('div');
+
+  const zeichneEinstellungen = () => {
+    leere(einstellBox);
+    einstellBox.appendChild(switchRow('Automatisch nach Updates sehen', s.updateAktiv !== false,
+      async v => { await sichern({ updateAktiv: v }); zeichneEinstellungen(); },
+      'Prüft im Hintergrund, ob eine neuere Version bereitsteht'));
+    if (s.updateAktiv !== false) {
+      einstellBox.appendChild(field('Prüfabstand',
+        num(s.updateIntervallStunden, v => sichern({ updateIntervallStunden: Math.max(1, Math.trunc(v) || 24) }), { unit: 'Stunden' }),
+        'Höchstens einmal in diesem Abstand; beim Start der App.'));
+    }
+    einstellBox.appendChild(field('Adresse der Update-Datei',
+      text(s.updateUrl, v => sichern({ updateUrl: v.trim() }), { placeholder: 'https://…/laserkalk/update.json' }),
+      'Leer lassen, wenn keine Prüfung gewünscht ist. Die Datei enthält nur Versionsnummer und Downloadadresse.'));
+    if (Number(s.ignorierteVersionCode) > 0) {
+      einstellBox.appendChild(h('button.btn.small.block.mt', {
+        text: `Übersprungene Version ${s.ignorierteVersionCode} wieder anzeigen`,
+        onclick: async () => { await sichern({ ignorierteVersionCode: 0 }); zeichneEinstellungen(); toast('Wird wieder gemeldet.', 'ok'); },
+      }));
+    }
+  };
+
+  const zeichneErgebnis = (r) => {
+    leere(ergebnisBox);
+    if (!r) {
+      ergebnisBox.appendChild(h('.hint', {
+        text: s.letzteUpdatePruefung
+          ? 'Zuletzt geprüft: ' + stampDe(s.letzteUpdatePruefung)
+          : 'Noch nie geprüft.',
+      }));
+      return;
+    }
+    if (r.status === STATUS.NEU) {
+      const i = r.info;
+      ergebnisBox.appendChild(note('ok', `Version ${i.versionName} steht bereit. Installiert ist ${versionText()}.` + (i.hinweise ? ' ' + i.hinweise : '')));
+      if (i.apkUrl) {
+        ergebnisBox.appendChild(h('button.btn.primary.block.mt', {
+          text: `Version ${i.versionName} herunterladen`,
+          onclick: () => { try { window.open(i.apkUrl, '_blank', 'noopener'); } catch { location.href = i.apkUrl; } },
+        }));
+        ergebnisBox.appendChild(h('.hint', { text: 'Nach dem Download die Datei antippen und die Installation bestätigen. Ihre Daten bleiben dabei erhalten.' }));
+      } else {
+        ergebnisBox.appendChild(note('warn', 'In der Update-Datei ist keine Downloadadresse hinterlegt.'));
+      }
+    } else if (r.status === STATUS.AKTUELL) {
+      ergebnisBox.appendChild(note('ok', `${versionText()} ist die neueste Version.`));
+    } else if (r.status === STATUS.FEHLER) {
+      ergebnisBox.appendChild(note('bad', r.fehler || 'Die Prüfung ist fehlgeschlagen.'));
+    } else {
+      ergebnisBox.appendChild(note('info', 'Es ist keine Adresse für die Update-Prüfung hinterlegt.'));
+    }
+  };
+
+  el.appendChild(card('Installierte Version',
+    h('.results', null,
+      res('Version', APP_VERSION.name, '', `versionCode ${APP_VERSION.code}`, true),
+      res('Zuletzt geprüft', s.letzteUpdatePruefung ? stampDe(s.letzteUpdatePruefung) : '—', ''),
+    ),
+    h('button.btn.primary.block.mt', {
+      text: 'Jetzt nach Updates suchen',
+      onclick: async (e) => {
+        const knopf = e.currentTarget;
+        knopf.disabled = true;
+        knopf.textContent = 'Wird geprüft …';
+        try {
+          const r = await appUpdatePruefen(true);
+          s.letzteUpdatePruefung = store.settings.letzteUpdatePruefung;
+          zeichneErgebnis(r);
+        } catch (err) {
+          zeichneErgebnis({ status: STATUS.FEHLER, fehler: String(err?.message || err) });
+        } finally {
+          knopf.disabled = false;
+          knopf.textContent = 'Jetzt nach Updates suchen';
+        }
+      },
+    }),
+    ergebnisBox));
+
+  el.appendChild(card('Einstellungen', einstellBox));
+
+  el.appendChild(card('Wie das Update funktioniert',
+    h('.hint', {
+      text: 'Die App lädt nur eine kleine Textdatei mit der neuesten Versionsnummer. ' +
+        'Dabei werden keine Daten über das Gerät, den Betrieb oder Ihre Kalkulationen übertragen — ' +
+        'es ist ein einfacher Abruf ohne Kennung. Die App installiert nichts von selbst: ' +
+        'Sie entscheiden, ob Sie das Installationspaket laden und einspielen. ' +
+        'Deshalb braucht die App auch keine Berechtigung zum Installieren von Apps.',
+    }),
+    h('.hint.mt', {
+      text: istNativeApp()
+        ? 'Diese App ist als Installationspaket eingerichtet. Alle Dateien liegen auf dem Gerät, '
+          + 'ein neues Paket ersetzt sie vollständig. Über den Play Store installierte Apps '
+          + 'aktualisiert der Store selbst – dann kann die Adresse oben leer bleiben.'
+        : 'Läuft die App als Web-App im Browser oder über „Zum Startbildschirm hinzufügen", '
+          + 'aktualisiert sie sich selbst: Eine neue Fassung wird im Hintergrund geladen und erst nach '
+          + 'Ihrer Bestätigung übernommen — nie mitten in einer laufenden Kalkulation.',
+    })));
+
+  zeichneEinstellungen();
+  zeichneErgebnis(null);
+  return { kopf: { titel: 'Updates', untertitel: versionText(), zurueck: '/settings' }, el };
+}
+
+/* ------------------------------------------------------------------ */
 
 function beschriftung(store2) {
   return {

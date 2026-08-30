@@ -57,6 +57,21 @@ header .hs{font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hi
   display:flex;align-items:center;justify-content:center;border:1px solid var(--line)}
 .logo svg{width:20px;height:20px;display:block}
 
+/* ---------- Update-Banner ---------- */
+#banners{position:sticky; top:56px; z-index:38; padding:0 10px; max-width:1180px; margin:0 auto}
+#banners:empty{display:none}
+.banner{
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  background:var(--card); border:1px solid var(--accent); border-radius:12px;
+  padding:11px 12px; margin-top:10px; box-shadow:var(--sh);
+}
+.banner .bi{flex:0 0 auto; font-size:17px; line-height:1}
+.banner .bt{flex:1 1 190px; min-width:0; font-size:13.5px; line-height:1.4}
+.banner .bt b{display:block; font-size:14.5px; font-weight:800}
+.banner .bt small{display:block; color:var(--muted); font-size:12px; margin-top:2px}
+.banner .bb{display:flex; gap:8px; flex:0 0 auto}
+.banner .bb .btn{min-height:40px; padding:9px 13px; font-size:13.5px; border-radius:10px}
+
 /* ---------- Inhalt ---------- */
 main{padding:12px 10px 8px; max-width:1180px; margin:0 auto}
 main{padding-bottom:calc(24px + env(safe-area-inset-bottom))}

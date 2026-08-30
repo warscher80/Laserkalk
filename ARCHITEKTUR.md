@@ -258,6 +258,36 @@ STARTSEITE (6 große Kacheln)
 
 ---
 
+## 7a. Auto-Update
+
+Zwei Ebenen, weil die App auf zwei Wegen ausgeliefert wird:
+
+| Ebene | Wofür | Mechanik |
+|---|---|---|
+| Service Worker | PWA / Browser | Versionierte Cache-Kennung `laserkalk-<name>-<code>`. Der neue Worker installiert sich, **wartet aber bewusst** (kein `skipWaiting` beim Installieren) und übernimmt erst nach Bestätigung durch den Benutzer. |
+| Update-Datei | seitlich installiertes APK | GET auf eine JSON-Datei mit `versionCode`/`apkUrl`; bei höherer Nummer ein Hinweisbanner mit Downloadlink. |
+
+Bewusste Entscheidungen:
+
+- **Kein Selbst-Installieren.** Ein `REQUEST_INSTALL_PACKAGES` würde die
+  Berechtigungsfreiheit der App aufgeben, und ein automatischer Austausch der
+  laufenden App ist für ein Werkzeug mit Geschäftsdaten das falsche Verhalten.
+- **Kein `skipWaiting` beim Installieren.** Sonst wird unter einer offenen
+  Kalkulation der Code getauscht und die App läuft halb alt, halb neu weiter.
+- **Nur `https` für die Downloadadresse.** Ein über `http` geladenes
+  Installationspaket wäre unterwegs manipulierbar.
+- **Strenge Prüfung der Update-Datei.** Eine fremde oder beschädigte Datei darf
+  nie dazu führen, dass dem Benutzer ein beliebiger Download angeboten wird.
+- **Die Version steht an vier Stellen** (`build.gradle`, `core/version.js`,
+  `sw.js`, `update.json`). Ein Test vergleicht sie — läuft die
+  Service-Worker-Kennung aus dem Takt, liefert die App still alte Dateien aus,
+  und genau das fällt sonst niemandem auf.
+- **Ehrlichkeit statt Werbetext:** Die App heißt nicht mehr „vollständig
+  offline, kein Netz". Sie rechnet offline; die Update-Prüfung ist die eine
+  Ausnahme, sie ist beschrieben und abschaltbar.
+
+---
+
 ## 8. Verbesserungsvorschläge (über die Anforderung hinaus)
 
 1. **Material-Snapshot je Kalkulation** (siehe 3.) — sonst ändert ein Preisupdate

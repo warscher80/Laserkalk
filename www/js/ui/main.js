@@ -18,9 +18,5 @@ registriere('settings', settings);
 
 start();
 
-/* Offline-Betrieb: Service Worker registrieren (nur über http/https, nicht bei file://). */
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(e => console.warn('Service Worker nicht registriert:', e));
-  });
-}
+/* Der Service Worker wird in app.js registriert – dort sitzt auch die
+   Behandlung neuer Versionen. */

@@ -50,6 +50,18 @@ export function defaultSettings() {
     dxfMinSegmentMm: 0.05,     // darunter gilt ein Segment als "extrem kurz"
     dxfFlaechenBasis: 'netto', // §14 Standardauswahl
 
+    /* --- Auto-Update (§44) --- */
+    /**
+     * Adresse einer kleinen JSON-Datei mit der neuesten Version.
+     * Leer = keine Prüfung. Die App installiert nie selbst, sie meldet nur.
+     * Aufbau der Datei: siehe update.json im Projektordner.
+     */
+    updateUrl: '',
+    updateAktiv: true,
+    updateIntervallStunden: 24,
+    letzteUpdatePruefung: 0,
+    ignorierteVersionCode: 0,
+
     /* --- Sonstiges --- */
     waehrung: 'EUR',
     theme: 'light',
