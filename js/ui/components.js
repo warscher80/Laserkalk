@@ -260,6 +260,27 @@ export function switchRow(label, an, onChange, unterzeile) {
   return el;
 }
 
+/**
+ * „Powered by NIVOX" — Herstellerzeile.
+ *
+ * Betriebsvorgabe: gehört in JEDE App. Verwendet wird ausschließlich das
+ * Originallogo (`icons/nivox.png`, Zuschnitt aus dem Key-Visual). Es wird
+ * NICHT als SVG nachgezeichnet und nicht eingefärbt — das Logo hat seinen
+ * eigenen dunklen Hintergrund, deshalb sitzt es auf einer dunklen Fläche und
+ * sieht in beiden Farbschemata gleich aus.
+ */
+export function nivox(zusatz = '') {
+  return h('.nivox', null,
+    h('span.nv-lab', { text: 'powered by' }),
+    h('img.nv-logo', {
+      src: './icons/nivox.png',
+      alt: 'NIVOX — Apps, Web, Software',
+      width: 400, height: 113, loading: 'lazy', decoding: 'async',
+    }),
+    zusatz ? h('span.nv-add', { text: zusatz }) : null,
+  );
+}
+
 /** Karte mit Titel. */
 export function card(titel, ...inhalt) {
   return h('.card', null, titel ? h('h3', null, titel) : null, ...inhalt);

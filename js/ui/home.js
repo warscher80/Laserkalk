@@ -1,6 +1,6 @@
 /** home.js — Startseite (§1): sechs große Schaltflächen. */
 
-import { h, icon, card, note } from './components.js';
+import { h, icon, card, note, nivox } from './components.js';
 import { store } from '../core/store.js';
 import { berechne } from '../calc/engine.js';
 import { eur } from '../core/money.js';
@@ -56,6 +56,8 @@ export function render(ctx) {
     box.appendChild(h('div.mt', null, card('Zuletzt bearbeitet', liste,
       h('button.btn.ghost.block.mt', { text: 'Alle Kalkulationen', onclick: () => ctx.gehe('/history') }))));
   }
+
+  box.appendChild(nivox());
 
   return { kopf: { titel: 'LaserKalk', untertitel: 'Kalkulation Laserschneiden & Blechteile' }, el: box };
 }
