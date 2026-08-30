@@ -6,8 +6,7 @@
 
 import {
   h, card, field, text, num, money, prozent, select, seg, switchRow, note, toast, icon,
-  sheet, bestaetige, empty, leere, res,
-} from './components.js';
+  sheet, bestaetige, empty, leere, res, nivox } from './components.js';
 import { store } from '../core/store.js';
 import { setzeTheme, appUpdatePruefen, istNativeApp } from './app.js';
 import { APP_VERSION, versionText } from '../core/version.js';
@@ -74,6 +73,7 @@ function uebersicht(ctx) {
     h('.hint', { text: `Nächste Nummer: ${s.nummernPraefix || 'K'}-${new Date().getFullYear()}-${String(s.nummernZaehler || 1).padStart(4, '0')}` })));
 
   el.appendChild(h('.hint.mt', { text: `LaserKalk ${versionText()} · Speicher: ${store.adapter.kind === 'indexeddb' ? 'Gerätedatenbank (IndexedDB)' : 'nur Arbeitsspeicher'}` }));
+  el.appendChild(nivox('LaserKalk ist eine Anwendung von NIVOX – Apps · Web · Software.'));
 
   return { kopf: { titel: 'Einstellungen', zurueck: '/home' }, el };
 }

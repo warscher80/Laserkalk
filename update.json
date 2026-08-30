@@ -1,8 +1,8 @@
 {
   "_hinweis": "Update-Prüfung für LaserKalk. Liegt unter https://warscher80.github.io/Laserkalk/update.json und wird von der App abgefragt. Bei jeder neuen Version hier versionCode, versionName, apkUrl und hinweise anpassen.",
-  "versionCode": 4,
-  "versionName": "1.0.3",
-  "apkUrl": "https://warscher80.github.io/Laserkalk/LaserKalk-1.0.3.apk",
-  "hinweise": "Geprüfte Kalkulation und DXF-Auswertung, sichere Wiederherstellung, strengere Eingabeprüfung.",
+  "versionCode": 5,
+  "versionName": "1.0.4",
+  "apkUrl": "https://warscher80.github.io/Laserkalk/LaserKalk-1.0.4.apk",
+  "hinweise": "Geprüfte Kalkulation und DXF-Auswertung, sichere Wiederherstellung, strengere Eingabeprüfung, NIVOX-Herstellerzeile.",
   "pflicht": false
 }

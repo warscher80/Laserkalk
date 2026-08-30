@@ -9,6 +9,10 @@ Textdatei ohne Kennung, abschaltbar unter Einstellungen → Updates.
 Heller Hintergrund als Standard, Dunkelmodus unter Einstellungen → Darstellung.
 Sprache: Deutsch. Alle Preise und Sätze werden vom Betrieb selbst gepflegt.
 
+Hersteller: **NIVOX · Apps · Web · Software**. Die Herstellerzeile steht am
+Fuß der Startseite und in den Einstellungen (`nivox()` in
+`www/js/ui/components.js`, Logo `www/icons/nivox.png`).
+
 > Das technische Konzept — Datenmodell, DXF-Verfahren, bekannte Grenzen —
 > steht in **[ARCHITEKTUR.md](ARCHITEKTUR.md)**.
 
