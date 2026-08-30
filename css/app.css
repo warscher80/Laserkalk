@@ -1,0 +1,345 @@
+/* LaserKalk — Oberfläche.
+   Werkstatt-tauglich: große Schaltflächen, große Eingabefelder, hoher Kontrast,
+   keine überflüssigen Animationen. Dark- und Light-Mode über body.light. */
+
+:root{
+  --bg:#0e1318; --bg2:#141c24; --card:#1a232d; --card2:#212c38; --card3:#27333f;
+  --line:#2c3946; --line2:#3a4a5a;
+  --txt:#e9eef3; --muted:#93a3b3; --muted2:#6d7d8d;
+  --accent:#ff9330; --accent2:#ffb163; --accentInk:#241403;
+  --blue:#4aa8ff; --ok:#3ddc84; --warn:#ffcf4d; --bad:#ff5f5f;
+  --r:14px; --rs:10px;
+  --tap:52px;
+  --sh:0 8px 24px rgba(0,0,0,.42);
+}
+body.light{
+  --bg:#eef2f6; --bg2:#e4eaf1; --card:#ffffff; --card2:#f4f7fa; --card3:#e9eff5;
+  --line:#d3dde6; --line2:#bccadb;
+  --txt:#16202a; --muted:#5a6b7c; --muted2:#7d8d9d;
+  --accent:#e2700a; --accent2:#b85a06; --accentInk:#fff6ec;
+  --blue:#0f6fd1; --ok:#128a4b; --warn:#a97400; --bad:#c62828;
+  --sh:0 6px 18px rgba(20,40,60,.12);
+}
+
+/* Verhindert das kurze Aufblitzen des dunklen Grundes vor dem ersten Zeichnen. */
+html.vorab-hell{background:#eef2f6}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+/* Muss die display-Regeln der Komponenten schlagen (z. B. .btn{display:inline-flex}),
+   sonst bleibt ein per el.hidden ausgeblendetes Element sichtbar. */
+[hidden]{display:none !important}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:var(--bg); color:var(--txt);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  font-size:16px; line-height:1.45;
+  -webkit-user-select:none; user-select:none;
+  overscroll-behavior-y:none;
+}
+
+/* ---------- Kopfzeile ---------- */
+header{
+  position:sticky; top:0; z-index:40;
+  background:var(--bg2); border-bottom:1px solid var(--line);
+  padding:calc(8px + env(safe-area-inset-top)) 10px 8px;
+  display:flex; align-items:center; gap:8px; min-height:56px;
+}
+header .hbtn{
+  flex:0 0 auto; width:44px; height:44px; border:0; border-radius:12px;
+  background:var(--card); color:var(--txt); font-size:20px; font-weight:700;
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  border:1px solid var(--line);
+}
+header .hbtn:active{background:var(--card3)}
+header .htitles{flex:1 1 auto; min-width:0}
+header .ht{font-weight:800; font-size:17px; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+header .hs{font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.logo{width:34px;height:34px;border-radius:10px;flex:0 0 auto;background:linear-gradient(150deg,#2a3441,#151c24);
+  display:flex;align-items:center;justify-content:center;border:1px solid var(--line)}
+.logo svg{width:20px;height:20px;display:block}
+
+/* ---------- Update-Banner ---------- */
+#banners{position:sticky; top:56px; z-index:38; padding:0 10px; max-width:1180px; margin:0 auto}
+#banners:empty{display:none}
+.banner{
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  background:var(--card); border:1px solid var(--accent); border-radius:12px;
+  padding:11px 12px; margin-top:10px; box-shadow:var(--sh);
+}
+.banner .bi{flex:0 0 auto; font-size:17px; line-height:1}
+.banner .bt{flex:1 1 190px; min-width:0; font-size:13.5px; line-height:1.4}
+.banner .bt b{display:block; font-size:14.5px; font-weight:800}
+.banner .bt small{display:block; color:var(--muted); font-size:12px; margin-top:2px}
+.banner .bb{display:flex; gap:8px; flex:0 0 auto}
+.banner .bb .btn{min-height:40px; padding:9px 13px; font-size:13.5px; border-radius:10px}
+
+/* ---------- Inhalt ---------- */
+main{padding:12px 10px 8px; max-width:1180px; margin:0 auto}
+main{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+body.haspricebar main{padding-bottom:calc(118px + env(safe-area-inset-bottom))}
+
+.card{background:var(--card); border:1px solid var(--line); border-radius:var(--r);
+  padding:14px; margin-bottom:12px; box-shadow:var(--sh)}
+.card>h3{margin:0 0 10px; font-size:12px; color:var(--muted); font-weight:800;
+  text-transform:uppercase; letter-spacing:.9px; display:flex; align-items:center; gap:8px}
+.card>h3::before{content:""; width:4px; height:13px; border-radius:2px; background:var(--accent); flex:0 0 auto}
+.card>h3 .sp{margin-left:auto; text-transform:none; letter-spacing:0; font-weight:700; color:var(--muted2); font-size:11.5px}
+
+.cols{display:grid; grid-template-columns:1fr; gap:0 12px}
+@media(min-width:900px){ .cols{grid-template-columns:1fr 1fr} .cols>.full{grid-column:1/-1} }
+
+.grid{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.grid.g3{grid-template-columns:repeat(3,1fr)}
+.grid.g1{grid-template-columns:1fr}
+.grid .full{grid-column:1/-1}
+@media(max-width:380px){ .grid.g3{grid-template-columns:1fr 1fr} }
+
+/* ---------- Formularelemente ---------- */
+.field{margin-bottom:10px; min-width:0}
+.field>label{display:block; font-size:12px; color:var(--muted); margin:0 0 5px 2px; font-weight:700}
+/* Hinweistext – gilt auch frei stehend in einer Karte, nicht nur unter einem Feld. */
+.hint{font-size:11.5px; color:var(--muted2); margin:4px 2px 0; line-height:1.45}
+.hint.warn{color:var(--warn)}
+.hint.bad{color:var(--bad)}
+.hint.ok{color:var(--ok)}
+
+input,select,textarea{
+  width:100%; background:var(--card2); color:var(--txt);
+  border:1px solid var(--line); border-radius:var(--rs);
+  padding:12px 12px; font-size:16px; font-weight:600; outline:none;
+  font-family:inherit; min-height:var(--tap);
+  -webkit-user-select:text; user-select:text;
+}
+textarea{min-height:78px; font-weight:500; line-height:1.4; resize:vertical}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+input[type=number]{-webkit-appearance:none;appearance:textfield}
+input[type=checkbox]{width:auto;min-height:auto}
+select{appearance:none; padding-right:36px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2393a3b3' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat; background-position:right 12px center}
+body.light select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235a6b7c' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>")}
+input:focus,select:focus,textarea:focus{border-color:var(--accent); background:var(--card3)}
+input::placeholder,textarea::placeholder{color:var(--muted2); font-weight:500}
+input:disabled,select:disabled{opacity:.55}
+input.err,select.err{border-color:var(--bad)}
+
+.unit{position:relative}
+.unit>.u{position:absolute; right:12px; top:50%; transform:translateY(-50%);
+  color:var(--muted2); font-size:13px; font-weight:700; pointer-events:none}
+.unit input{padding-right:52px}
+.unit.calc input{color:var(--muted); font-style:italic}
+
+/* Segmentierte Umschalter */
+.seg{display:flex; background:var(--card2); border-radius:var(--rs); padding:3px; border:1px solid var(--line); gap:2px}
+.seg button{flex:1; min-width:0; border:0; background:transparent; color:var(--muted);
+  font-weight:700; font-size:13px; padding:11px 6px; border-radius:8px; cursor:pointer;
+  font-family:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.seg button.on{background:var(--accent); color:var(--accentInk)}
+.seg.small button{padding:8px 5px; font-size:12px}
+.seg.wrap{flex-wrap:wrap}
+.seg.wrap button{flex:1 1 30%}
+
+/* Schalter */
+.switch{display:flex; align-items:center; gap:10px; padding:10px 2px; cursor:pointer; min-height:var(--tap)}
+.switch .track{width:50px; height:30px; border-radius:15px; background:var(--card3); border:1px solid var(--line);
+  position:relative; flex:0 0 auto; transition:background .15s}
+.switch .knob{position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:11px;
+  background:var(--muted); transition:transform .15s, background .15s}
+.switch.on .track{background:rgba(255,147,48,.25); border-color:var(--accent)}
+.switch.on .knob{transform:translateX(20px); background:var(--accent)}
+.switch .lab{font-size:14px; font-weight:600; flex:1}
+.switch .lab small{display:block; font-weight:500; font-size:11.5px; color:var(--muted)}
+
+/* ---------- Schaltflächen ---------- */
+.btn{
+  border:1px solid var(--line); border-radius:12px; background:var(--card2); color:var(--txt);
+  font-size:15px; font-weight:800; padding:14px 16px; cursor:pointer; font-family:inherit;
+  display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:var(--tap);
+}
+.btn:active{background:var(--card3)}
+.btn.primary{background:var(--accent); color:var(--accentInk); border-color:var(--accent)}
+.btn.ghost{background:transparent}
+.btn.bad{color:var(--bad); border-color:rgba(255,95,95,.4)}
+.btn.small{padding:9px 12px; font-size:13.5px; min-height:40px; border-radius:10px}
+.btn.block{width:100%}
+.btn:disabled{opacity:.5; pointer-events:none}
+.btnrow{display:flex; gap:10px; flex-wrap:wrap}
+.btnrow>.btn{flex:1 1 140px}
+
+/* Startseiten-Kacheln */
+.tiles{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+@media(min-width:760px){ .tiles{grid-template-columns:repeat(3,1fr)} }
+.tile{
+  background:var(--card); border:1px solid var(--line); border-radius:18px;
+  padding:20px 16px; min-height:128px; cursor:pointer; text-align:left;
+  display:flex; flex-direction:column; gap:6px; box-shadow:var(--sh); color:var(--txt);
+  font-family:inherit;
+}
+.tile:active{background:var(--card2)}
+.tile.hero{grid-column:1/-1; min-height:104px; flex-direction:row; align-items:center;
+  background:linear-gradient(135deg, rgba(255,147,48,.20), var(--card) 62%); border-color:rgba(255,147,48,.42)}
+.tile .ic{width:40px;height:40px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  border-radius:11px;background:var(--card3);color:var(--accent)}
+.tile.hero .ic{width:52px;height:52px}
+.tile .tt{font-size:16px; font-weight:800; letter-spacing:.2px; line-height:1.2}
+.tile.hero .tt{font-size:20px}
+.tile .td{font-size:12px; color:var(--muted); font-weight:500; line-height:1.3}
+.tile svg{width:22px;height:22px;display:block}
+.tile.hero svg{width:28px;height:28px}
+
+/* ---------- Ergebnisse ---------- */
+.results{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.res{background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:11px 12px; min-width:0}
+.res .rl{font-size:10.5px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:.6px}
+.res .rv{font-size:22px; font-weight:800; margin-top:2px; line-height:1.05; font-variant-numeric:tabular-nums;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.res .ru{font-size:12px; color:var(--muted); font-weight:700; margin-left:3px}
+.res .rs{font-size:11px; color:var(--muted2); margin-top:2px}
+.res.primary{border-color:var(--accent); background:linear-gradient(150deg, rgba(255,147,48,.16), var(--card2))}
+.res.primary .rv{color:var(--accent)}
+.res.full{grid-column:1/-1}
+
+/* Preisleiste unten */
+#pricebar{
+  position:fixed; left:0; right:0; bottom:0; z-index:35;
+  background:var(--bg2); border-top:1px solid var(--line);
+  padding:9px 12px calc(9px + env(safe-area-inset-bottom));
+  display:none; gap:10px; align-items:center;
+  box-shadow:0 -6px 20px rgba(0,0,0,.28);
+}
+body.haspricebar #pricebar{display:flex}
+#pricebar .pb{flex:1; min-width:0}
+#pricebar .pl{font-size:10px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:.7px}
+#pricebar .pv{font-size:23px; font-weight:800; line-height:1.1; font-variant-numeric:tabular-nums;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#pricebar .pb.main .pv{color:var(--accent)}
+#pricebar .pbtn{flex:0 0 auto}
+
+/* ---------- Listen ---------- */
+.list{display:flex; flex-direction:column; gap:8px}
+.item{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 13px;
+  display:flex; gap:10px; align-items:center; cursor:pointer; min-height:var(--tap)}
+.item:active{background:var(--card2)}
+.item .ib{flex:1; min-width:0}
+.item .i1{font-weight:800; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.item .i2{font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.item .i3{font-size:11.5px; color:var(--muted2)}
+.item .ir{text-align:right; flex:0 0 auto}
+.item .ir .v{font-weight:800; font-size:16px; font-variant-numeric:tabular-nums}
+.item .ir .s{font-size:11.5px; color:var(--muted)}
+.item.inaktiv{opacity:.55}
+.item .tag{font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.5px;
+  padding:2px 6px; border-radius:5px; background:var(--card3); color:var(--muted); flex:0 0 auto}
+
+.rowbtns{display:flex; gap:6px; flex:0 0 auto}
+.iconbtn{width:40px; height:40px; border-radius:10px; border:1px solid var(--line); background:var(--card2);
+  color:var(--muted); display:flex; align-items:center; justify-content:center; cursor:pointer; flex:0 0 auto}
+.iconbtn svg{width:18px;height:18px}
+.iconbtn:active{background:var(--card3)}
+.iconbtn.bad{color:var(--bad)}
+
+/* ---------- Meldungen ---------- */
+.note{display:flex; gap:9px; align-items:flex-start; border-radius:10px; padding:10px 12px;
+  font-size:13px; line-height:1.4; margin:8px 0; border:1px solid}
+.note.info{background:rgba(74,168,255,.09); border-color:rgba(74,168,255,.3); color:var(--blue)}
+.note.warn{background:rgba(255,207,77,.09); border-color:rgba(255,207,77,.32); color:var(--warn)}
+.note.bad{background:rgba(255,95,95,.09); border-color:rgba(255,95,95,.32); color:var(--bad)}
+.note.ok{background:rgba(61,220,132,.09); border-color:rgba(61,220,132,.3); color:var(--ok)}
+.note b{font-weight:800}
+.note ul{margin:4px 0 0; padding-left:18px}
+.note li{margin:2px 0}
+.note .ni{flex:0 0 auto; font-size:15px; line-height:1.2}
+
+.empty{text-align:center; padding:38px 18px; color:var(--muted)}
+.empty .e1{font-size:16px; font-weight:700; margin-bottom:6px; color:var(--txt)}
+.empty .e2{font-size:13.5px}
+
+/* ---------- Detailaufstellung ---------- */
+.detail{font-variant-numeric:tabular-nums}
+.detail .dg{font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.8px;
+  color:var(--accent); margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--line)}
+.detail .dg:first-child{margin-top:0}
+.detail .dr{display:flex; gap:10px; align-items:baseline; padding:5px 0; font-size:14px}
+.detail .dr .dl{flex:1; min-width:0}
+.detail .dr .dl small{display:block; color:var(--muted2); font-size:11.5px; font-weight:500}
+.detail .dr .dv{font-weight:700; flex:0 0 auto; white-space:nowrap}
+.detail .dr.sum{border-top:1px solid var(--line); margin-top:6px; padding-top:9px; font-size:15px; font-weight:800}
+.detail .dr.total{border-top:2px solid var(--accent); margin-top:8px; padding-top:11px; font-size:19px; font-weight:800}
+.detail .dr.total .dv{color:var(--accent); font-size:22px}
+.detail .dr.sub{color:var(--muted); font-size:13px}
+
+table.staffel{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:13.5px}
+table.staffel th{text-align:right; font-size:11px; color:var(--muted); font-weight:800; padding:4px 6px;
+  text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid var(--line)}
+table.staffel th:first-child{text-align:left}
+table.staffel td{text-align:right; padding:7px 6px; border-bottom:1px solid var(--line)}
+table.staffel td:first-child{text-align:left; font-weight:700}
+table.staffel tr.now td{color:var(--accent); font-weight:800}
+
+/* ---------- DXF-Vorschau ---------- */
+.dxfwrap{display:grid; grid-template-columns:1fr; gap:10px}
+@media(min-width:620px){ .dxfwrap{grid-template-columns:1.2fr 1fr} }
+.dxfcanvas{width:100%; height:240px; background:var(--card2); border:1px solid var(--line);
+  border-radius:12px; display:block}
+@media(min-width:620px){ .dxfcanvas{height:300px} }
+.dxfkv{display:grid; grid-template-columns:1fr 1fr; gap:7px; align-content:start}
+.dxfkv .kv{background:var(--card2); border:1px solid var(--line); border-radius:9px; padding:7px 9px; min-width:0}
+.dxfkv .kv .k{font-size:10px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:.5px}
+.dxfkv .kv .v{font-size:15px; font-weight:800; font-variant-numeric:tabular-nums;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.dxfkv .kv .v small{font-size:11px; color:var(--muted); font-weight:700}
+
+.drop{border:2px dashed var(--line2); border-radius:14px; padding:26px 16px; text-align:center;
+  cursor:pointer; background:var(--card2)}
+.drop.over{border-color:var(--accent); background:rgba(255,147,48,.08)}
+.drop .d1{font-weight:800; font-size:15.5px; margin-bottom:4px}
+.drop .d2{font-size:12.5px; color:var(--muted)}
+
+/* ---------- Dialog / Toast ---------- */
+#modal{position:fixed; inset:0; z-index:60; display:none; align-items:flex-end; justify-content:center;
+  background:rgba(0,0,0,.55); padding:0}
+#modal.on{display:flex}
+@media(min-width:640px){ #modal{align-items:center; padding:20px} }
+.sheet{background:var(--bg2); border:1px solid var(--line); width:100%; max-width:640px;
+  border-radius:18px 18px 0 0; max-height:92vh; overflow:auto; box-shadow:0 -10px 40px rgba(0,0,0,.5);
+  padding:16px 14px calc(16px + env(safe-area-inset-bottom))}
+@media(min-width:640px){ .sheet{border-radius:18px; max-height:88vh} }
+.sheet h2{margin:0 0 12px; font-size:18px; font-weight:800}
+.sheet .sheetfoot{display:flex; gap:10px; margin-top:14px; position:sticky; bottom:0;
+  background:var(--bg2); padding-top:10px}
+.sheet .sheetfoot .btn{flex:1}
+
+#toasts{position:fixed; left:12px; right:12px; bottom:calc(90px + env(safe-area-inset-bottom)); z-index:70;
+  display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none}
+.toast{background:var(--card3); color:var(--txt); border:1px solid var(--line2); border-radius:12px;
+  padding:11px 16px; font-size:14px; font-weight:600; box-shadow:var(--sh); max-width:520px}
+.toast.ok{border-color:var(--ok); color:var(--ok)}
+.toast.bad{border-color:var(--bad); color:var(--bad)}
+.toast.warn{border-color:var(--warn); color:var(--warn)}
+
+.searchbar{display:flex; gap:8px; margin-bottom:10px}
+.searchbar input{flex:1}
+.chips{display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px}
+.chip{border:1px solid var(--line); background:var(--card2); color:var(--muted); border-radius:20px;
+  padding:8px 13px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; min-height:40px}
+.chip.on{background:var(--accent); color:var(--accentInk); border-color:var(--accent)}
+
+.subrow{display:flex; gap:8px; align-items:flex-end}
+.subrow>*{flex:1; min-width:0}
+.subrow>.narrow{flex:0 0 96px}
+.subrow>.iconbtn{flex:0 0 40px; margin-bottom:10px}
+
+.posrow{background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:11px; margin-bottom:9px}
+.posrow .ph{display:flex; align-items:center; gap:8px; margin-bottom:8px}
+.posrow .ph .pn{font-weight:800; font-size:14.5px; flex:1; min-width:0;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.posrow .ph .pc{font-weight:800; font-variant-numeric:tabular-nums; font-size:14.5px}
+
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.right{text-align:right}
+.mt{margin-top:12px}
+.nowrap{white-space:nowrap}
+.badge{display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.5px;
+  padding:2px 6px; border-radius:5px; margin-left:6px; vertical-align:middle}
+.badge.auto{background:rgba(74,168,255,.18); color:var(--blue)}
+.badge.man{background:rgba(255,147,48,.18); color:var(--accent)}
