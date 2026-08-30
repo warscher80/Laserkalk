@@ -49,6 +49,16 @@ export class MemoryAdapter {
   async all(store) { return [...this._s(store).values()].map(v => JSON.parse(JSON.stringify(v))); }
   async bulkPut(store, arr) { for (const o of arr) await this.put(store, o); return arr; }
   async clear(store) { this._s(store).clear(); }
+  /** Wie IdbAdapter.replaceAll – im Speicher ohnehin unteilbar. */
+  async replaceAll(daten, leeren = true) {
+    let anzahl = 0;
+    for (const [name, arr] of Object.entries(daten)) {
+      if (!STORES.includes(name)) continue;
+      if (leeren) this._s(name).clear();
+      for (const o of arr) { await this.put(name, o); anzahl++; }
+    }
+    return anzahl;
+  }
   async close() {}
 }
 
@@ -114,6 +124,37 @@ export class IdbAdapter {
   }
 
   async clear(store) { await req(this._tx(store, 'readwrite').clear()); }
+
+  /**
+   * Ersetzt mehrere Bereiche in EINER Transaktion.
+   *
+   * Das ist der Kern eines sicheren Restore: Leeren und Neuschreiben passieren
+   * gemeinsam. Bricht irgendetwas ab, macht IndexedDB die gesamte Transaktion
+   * rückgängig — es kann kein Zustand entstehen, in dem die alten Daten weg und
+   * die neuen unvollständig sind.
+   *
+   * @param {Object} daten  { storeName: [...Einträge] }
+   * @param {boolean} leeren  true = betroffene Bereiche vorher leeren (Ersetzen),
+   *                          false = nur überschreiben/ergänzen (Hinzufügen)
+   */
+  async replaceAll(daten, leeren = true) {
+    const namen = Object.keys(daten).filter(n => STORES.includes(n));
+    if (!namen.length) return 0;
+    const tx = this.db.transaction(namen, 'readwrite');
+    let anzahl = 0;
+    for (const name of namen) {
+      const os = tx.objectStore(name);
+      if (leeren) os.clear();
+      for (const o of daten[name]) { os.put(o); anzahl++; }
+    }
+    await new Promise((res, rej) => {
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error || new Error('Schreibfehler'));
+      tx.onabort = () => rej(tx.error || new Error('Transaktion abgebrochen'));
+    });
+    return anzahl;
+  }
+
   async close() { if (this.db) { this.db.close(); this.db = null; } }
 }
 
@@ -135,6 +176,38 @@ export async function openDatabase() {
     }
   }
   return new MemoryAdapter().open();
+}
+
+/**
+ * Bittet den Browser, den Speicher dauerhaft zu behalten.
+ *
+ * Ohne diese Zusage darf der Browser die Datenbank bei Platzmangel oder nach
+ * längerer Nichtbenutzung löschen — bei Kalkulationsdaten eines Betriebs ist
+ * das keine theoretische Gefahr. Chrome gewährt es meist stillschweigend,
+ * Safari knüpft es an die Installation als Home-Bildschirm-App.
+ *
+ * @returns {Promise<{unterstuetzt:boolean, dauerhaft:boolean, belegtBytes:number|null, kontingentBytes:number|null}>}
+ */
+export async function speicherStatus(anfordern = true) {
+  const aus = { unterstuetzt: false, dauerhaft: false, belegtBytes: null, kontingentBytes: null };
+  if (typeof navigator === 'undefined' || !navigator.storage) return aus;
+  aus.unterstuetzt = typeof navigator.storage.persisted === 'function';
+  try {
+    if (aus.unterstuetzt) {
+      aus.dauerhaft = await navigator.storage.persisted();
+      if (!aus.dauerhaft && anfordern && typeof navigator.storage.persist === 'function') {
+        aus.dauerhaft = await navigator.storage.persist();
+      }
+    }
+    if (typeof navigator.storage.estimate === 'function') {
+      const e = await navigator.storage.estimate();
+      aus.belegtBytes = Number.isFinite(e.usage) ? e.usage : null;
+      aus.kontingentBytes = Number.isFinite(e.quota) ? e.quota : null;
+    }
+  } catch (e) {
+    console.warn('Speicherstatus nicht ermittelbar:', e);
+  }
+  return aus;
 }
 
 const MIRROR_KEY = 'laserkalk_mirror_v1';

@@ -164,8 +164,23 @@ falsch interpretiert.
 ### 5.2 Fläche, Innenausschnitte, Schnittlänge, Gewicht
 
 1. **Diskretisieren:** Jede Entität wird in Polygonzüge zerlegt. Bögen/Kreise/Splines
-   werden mit einer Sehnenhöhen-Toleranz von 0,02 mm abgeflacht — der Fehler auf die
-   Fläche liegt damit weit unter der Fertigungstoleranz.
+   werden mit einer Sehnenhöhen-Toleranz von **0,005 mm** abgeflacht
+   (`dxfFlachToleranzMm`, in den Einstellungen änderbar). Der Fehler ist
+   systematisch, einseitig und ausrechenbar: das einbeschriebene Vieleck ist
+   immer etwas kleiner als die Rundung.
+
+   | Radius | Fehler Fläche | Fehler Länge |
+   |---|---|---|
+   | 5 mm | −1,31 ‰ | −0,33 ‰ |
+   | 10 mm | −0,66 ‰ | −0,16 ‰ |
+   | 25 mm | −0,26 ‰ | −0,07 ‰ |
+   | 100 mm | −0,07 ‰ | −0,02 ‰ |
+
+   Bei einem 10-mm-Loch sind das 0,05 mm² von 78,5 mm². Die Richtung ist
+   kaufmännisch unbedenklich: Löcher werden minimal zu klein, die Nettofläche
+   also minimal zu groß gerechnet — es wird nie zu wenig verrechnet.
+   `tests/dxf-referenz.test.js` leitet seine Toleranzen aus genau dieser Formel
+   her, sie hängen damit an der eingestellten Abflachung.
 2. **Konturen bilden:** Alle Segmente kommen in ein räumliches Raster; Endpunkte
    werden mit einer Toleranz (Standard 0,01 mm, adaptiv zur Bauteilgröße) verkettet.
    Ergebnis: geschlossene Ketten (Konturen) und offene Ketten (Fehler → Warnung).
@@ -184,6 +199,21 @@ falsch interpretiert.
    Kinder ungerader Tiefe darunter sind seine Löcher. Die App zeigt die erkannten
    Bauteile an und lässt wählen: „gesamte DXF als ein Teil" oder „Bauteile einzeln",
    dann je Bauteil mit eigener Stückzahl.
+
+### 5.2b Was ist verlässlich, was nur genähert?
+
+Diese Einteilung ist für den Betrieb wichtiger als jede Fehlermeldung:
+
+| Verlässlich (exakt bis auf Gleitkomma) | Genähert (Fehler bekannt und begrenzt) | Nicht ausgewertet |
+|---|---|---|
+| `LINE`, `LWPOLYLINE` ohne Bulge, `POLYLINE`+`VERTEX` (nur Geraden), `INSERT` mit Verschiebung/Skalierung/Drehung, Verschachtelung beliebiger Tiefe, Bauteiltrennung, Einstichzählung | `CIRCLE`, `ARC`, Bulge-Segmente, `ELLIPSE` (Abflachung, Tabelle oben), `SPLINE` (Abtastung über den Knotenvektor, Fehler ≈ 5 ‰) | `TEXT`, `MTEXT`, `DIMENSION`, `LEADER`, `HATCH`, `POINT`, `SOLID`, Layer `DEFPOINTS` — werden mit Typ und Anzahl gemeldet |
+
+**Splines** sind der schwächste Punkt: die Abtastdichte richtet sich nach der
+Länge des Kontrollpolygons, nicht nach der wahren Krümmung. Bei einer Zeichnung,
+die überwiegend aus Splines besteht, gehört die Fläche geprüft. Im Blechteil
+sind Splines die Ausnahme.
+
+**Binäres DXF und DWG** werden erkannt und abgelehnt — nicht falsch gelesen.
 
 ### 5.3 Prüfungen und Warnungen (§11)
 

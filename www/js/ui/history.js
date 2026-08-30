@@ -92,7 +92,8 @@ export async function render(ctx) {
 
   el.appendChild(h('.searchbar', null,
     h('input', {
-      type: 'search', placeholder: 'Kunde, Projekt, Bauteil, Material, Datum …', value: zustand.suche,
+      type: 'search', 'aria-label': 'Kalkulationen durchsuchen',
+      placeholder: 'Kunde, Projekt, Bauteil, Material, Datum …', value: zustand.suche,
       oninput: entprellt(e => { zustand.suche = e.target.value; zeichne(); }, 140),
     }),
     h('button.btn.primary', { style: { flex: '0 0 auto' }, onclick: () => ctx.gehe('/calc/neu') }, icon('plus', 20)),
@@ -100,7 +101,8 @@ export async function render(ctx) {
   el.appendChild(h('.field', null, select([
     ['neu', 'Neueste zuerst'], ['alt', 'Älteste zuerst'],
     ['preis', 'Höchster Preis zuerst'], ['kunde', 'Nach Kunde'],
-  ], zustand.sortierung, v => { zustand.sortierung = v; zeichne(); })));
+  ], zustand.sortierung, v => { zustand.sortierung = v; zeichne(); },
+    { 'aria-label': 'Sortierung der Kalkulationen' })));
   el.appendChild(listeBox);
 
   zeichne();

@@ -4,7 +4,7 @@
  * übersichtlicher (und schneller) ist als eine Abstraktionsschicht.
  */
 
-import { parseNum, toCent, centStr, toBp, bpToPct } from '../core/money.js';
+import { parseNum, toCent, centStr, toBp, bpToPct, pruefeZahl } from '../core/money.js';
 
 /** Mini-Hyperscript: h('div.card', {onclick}, kind1, kind2) */
 export function h(sel, props = null, ...kinder) {
@@ -32,9 +32,22 @@ export function h(sel, props = null, ...kinder) {
       else el.setAttribute(k, v);
     }
   }
+  // Anklickbare Bereiche, die technisch keine Schaltfläche sind (Listeneintrag,
+  // Ablagefeld, Schalter), müssen mit Tastatur und Screenreader bedienbar sein.
+  if (props && typeof props.onclick === 'function' && KLICKBAR.some(k => el.classList.contains(k))) {
+    if (!el.hasAttribute('tabindex')) el.tabIndex = 0;
+    if (!el.hasAttribute('role')) el.setAttribute('role', el.classList.contains('switch') ? 'switch' : 'button');
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); }
+    });
+  }
+
   anhaengen(el, kinder);
   return el;
 }
+
+/** Klassen, deren Elemente bei einem onclick tastaturbedienbar werden. */
+const KLICKBAR = ['item', 'drop', 'switch'];
 
 function anhaengen(el, kinder) {
   for (const k of kinder.flat(4)) {
@@ -100,6 +113,64 @@ export function text(value, onInput, props = {}) {
   });
 }
 
+/**
+ * Meldet ein Feld als ungültig — sichtbar, vorlesbar und mit Begründung.
+ * Ohne Grund wird die Meldung wieder entfernt.
+ *
+ * Wichtig: Ein ungültiger Eintrag ändert den gespeicherten Wert NICHT.
+ * Ein vertippter Preis darf nicht stillschweigend zu 0 werden (§41).
+ */
+function ungueltig(inp, grund) {
+  const box = inp.closest('.unit') || inp;
+  const traeger = box.parentElement || box;
+  let meldung = traeger.querySelector(':scope > .hint.feldfehler');
+  if (grund) {
+    inp.setAttribute('aria-invalid', 'true');
+    inp.classList.add('ungueltig');
+    if (!meldung) {
+      meldung = h('.hint.bad.feldfehler');
+      box.insertAdjacentElement('afterend', meldung);
+    }
+    meldung.textContent = grund;
+  } else {
+    inp.removeAttribute('aria-invalid');
+    inp.classList.remove('ungueltig');
+    if (meldung) meldung.remove();
+  }
+}
+
+/**
+ * Gemeinsames Verhalten aller Zahlenfelder: prüfen statt raten.
+ * @param {HTMLInputElement} inp
+ * @param {string} einheit   erwartete Einheit für mitkopierte Werte
+ * @param {(wert:number, roh:string)=>void} uebernehmen
+ * @param {(wert:number)=>string} anzeige   Formatierung beim Verlassen
+ */
+function zahlenfeld(inp, einheit, uebernehmen, anzeige) {
+  let letzterGueltiger = null;
+  inp.addEventListener('input', () => {
+    const p = pruefeZahl(inp.value, { einheit });
+    if (!p.ok) { ungueltig(inp, p.grund); return; }
+    ungueltig(inp, '');
+    letzterGueltiger = p;
+    uebernehmen(p);
+  });
+  inp.addEventListener('blur', () => {
+    const p = pruefeZahl(inp.value, { einheit });
+    if (p.ok) {
+      ungueltig(inp, '');
+      inp.value = anzeige(p);
+    } else if (letzterGueltiger) {
+      // Zurück auf den letzten gültigen Wert – NICHT auf 0.
+      ungueltig(inp, '');
+      inp.value = anzeige(letzterGueltiger);
+      uebernehmen(letzterGueltiger);
+    }
+    // Sonst stehen lassen: der Benutzer sieht seine Eingabe und die Begründung.
+  });
+  return inp;
+}
+
 /** Zahlenfeld mit deutscher Eingabe. Gibt bei jeder Eingabe die Zahl zurück. */
 export function num(value, onInput, props = {}) {
   const { unit, ...rest } = props;
@@ -107,23 +178,26 @@ export function num(value, onInput, props = {}) {
     type: 'text', inputmode: 'decimal', autocomplete: 'off',
     value: value === 0 && props.leerBei0 ? '' : formatEingabe(value),
     ...rest,
-    oninput: e => onInput(parseNum(e.target.value, 0), e.target.value),
-    onblur: e => { e.target.value = formatEingabe(parseNum(e.target.value, 0)); },
   });
+  zahlenfeld(inp, unit || '', (p) => onInput(p.wert, inp.value),
+    (p) => (p.wert === 0 && props.leerBei0 ? '' : formatEingabe(p.wert)));
   return unit ? h('.unit', null, inp, h('span.u', { text: unit })) : inp;
 }
 
 /** Geldfeld: zeigt Euro, liefert Cent. */
 export function money(cent, onInput, props = {}) {
+  const { einheit, ...rest } = props;
   const inp = h('input', {
     type: 'text', inputmode: 'decimal', autocomplete: 'off',
     value: cent ? centStr(cent) : '',
     placeholder: '0,00',
-    ...props,
-    oninput: e => onInput(toCent(e.target.value, 0)),
-    onblur: e => { const c = toCent(e.target.value, 0); e.target.value = c ? centStr(c) : ''; },
+    ...rest,
   });
-  return h('.unit', null, inp, h('span.u', { text: props.einheit || '€' }));
+  // Der Cent-Wert entsteht aus den ZIFFERN, nicht aus der Gleitkommazahl (§42).
+  zahlenfeld(inp, einheit || '€',
+    (p) => onInput(toCent(p.text, 0)),
+    (p) => { const c = toCent(p.text, 0); return c ? centStr(c) : ''; });
+  return h('.unit', null, inp, h('span.u', { text: einheit || '€' }));
 }
 
 /** Prozentfeld: zeigt Prozent, liefert Basispunkte. */
@@ -131,9 +205,10 @@ export function prozent(bp, onInput, props = {}) {
   const inp = h('input', {
     type: 'text', inputmode: 'decimal', autocomplete: 'off',
     value: fmtPct(bp), ...props,
-    oninput: e => onInput(toBp(e.target.value, 0)),
-    onblur: e => { e.target.value = fmtPct(toBp(e.target.value, 0)); },
   });
+  zahlenfeld(inp, '%',
+    (p) => onInput(toBp(p.text, 0)),
+    (p) => fmtPct(toBp(p.text, 0)));
   return h('.unit', null, inp, h('span.u', { text: '%' }));
 }
 

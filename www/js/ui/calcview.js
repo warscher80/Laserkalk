@@ -15,7 +15,7 @@ import { berechne, neueKalkulation, neueZeit, pruefeKalkulation, staffel, METHOD
 import { laserzeitMin, gewichtKg } from '../dxf/analyze.js';
 import { findeSchnittparameter, materialLabel } from '../core/material.js';
 import { rasterNesting } from '../calc/nesting.js';
-import { eur, num as fmtNum, pct } from '../core/money.js';
+import { eur, num as fmtNum, pct, glatt, costFromMinutes } from '../core/money.js';
 import { isoDate, minStr } from '../core/util.js';
 import { materialAuswahl } from './matpicker.js';
 import { dxfKarte, dxfFuerSpeicher, aggregiere } from './dxfcard.js';
@@ -90,6 +90,10 @@ export async function render(ctx, modus = 'voll') {
       nettoCent: r.vkNettoCent,
       proStueckCent: r.vkProStueckCent,
       stueckzahl: r.stueckzahl,
+      unsicher: r.preisUnsicher,
+      // Den TATSÄCHLICHEN Grund nennen, nicht pauschal die Einheit —
+      // sonst sucht der Benutzer an der falschen Stelle.
+      unsicherGrund: r.preisUnsicher ? kurzGrund(r) : '',
       aktion: { label: 'Speichern', onclick: speichern },
     });
     for (const f of zeitAuffrischer) f();
@@ -242,7 +246,7 @@ export async function render(ctx, modus = 'voll') {
         inhaltN.appendChild(h('.hint', { text: nest.hinweis }));
         if (calc.dxf) {
           inhaltN.appendChild(h('button.btn.small.block.mt', {
-            text: `Materialfläche aus Nesting übernehmen (${fmtNum(nest.flaecheProStueckM2, 5)} m²/Stück)`,
+            text: `Materialfläche aus dem Rechteck-Nesting übernehmen (${fmtNum(nest.flaecheProStueckM2, 5)} m²/Stück)`,
             onclick: () => {
               calc.dxf.nestingFlaecheProStueckM2 = nest.flaecheProStueckM2;
               calc.dxf.flaechenBasis = 'nesting';
@@ -254,6 +258,15 @@ export async function render(ctx, modus = 'voll') {
       }
       matBox.appendChild(card(h('span', null, 'Nesting-Vorschau', h('span.sp', { text: 'Rechteck, 0°/90°' })), inhaltN));
     }
+  }
+
+  /** Kurzform des ersten sperrenden Vorbehalts für die Preisleiste. */
+  function kurzGrund(r) {
+    const u = (r.unsicherheiten || []).find(x => x.schwere === 'blockierend');
+    if (!u) return 'Eingangsdaten ungeklärt';
+    if (/Einheit/.test(u.text)) return 'DXF-Einheit bestätigen';
+    if (/Materialfläche/.test(u.text)) return 'Zeichnung liefert keine Fläche';
+    return 'Eingangsdaten ungeklärt';
   }
 
   function nestingErgebnis() {
@@ -282,6 +295,8 @@ export async function render(ctx, modus = 'voll') {
       gas: calc.gas?.name, maschineId: settings.standardMaschineId,
     });
     if (!treffer.param) return { min: null, hinweis: treffer.hinweis };
+    // Ein Treffer außerhalb der Tabelle ist keine Schätzung, sondern ein Raten.
+    if (treffer.ausserhalb) return { min: null, hinweis: treffer.hinweis, ausserhalb: true };
     const min = laserzeitMin({
       schnittlaengeMm: d.schnittlaengeMm,
       einstiche: d.einstiche,
@@ -297,7 +312,7 @@ export async function render(ctx, modus = 'voll') {
     const zeile = calc.zeiten.find(z => z.art === 'laser');
     if (!zeile) return;
     const s = laserSchaetzung();
-    if (!s || s.min === null) return;
+    if (!s || !(s.min > 0)) return;
     if (erzwingen || zeile.quelle === 'auto' || !(Number(zeile.minuten) > 0)) {
       zeile.minuten = Math.round(s.min * 100) / 100;
       zeile.modus = 'proStueck';
@@ -336,8 +351,11 @@ export async function render(ctx, modus = 'voll') {
        */
       function auffrischen() {
         const n = Math.max(1, Math.trunc(Number(calc.stueckzahl) || 1));
-        const minGes = z.modus === 'proStueck' ? (Number(z.minuten) || 0) * n : (Number(z.minuten) || 0);
-        kostenAnzeige.textContent = eur(Math.round((minGes * (Number(z.satzCent) || 0)) / 60));
+        // Genau wie im Rechenkern rechnen, sonst weicht die Zeilenanzeige
+        // vom Preis unten ab (glatt() gegen Gleitkomma-Rauschen, kaufmännisch runden).
+        const min = Math.max(0, Number(z.minuten) || 0);
+        const minGes = glatt(z.modus === 'proStueck' ? min * n : min);
+        kostenAnzeige.textContent = eur(costFromMinutes(minGes, Math.max(0, Math.trunc(Number(z.satzCent) || 0))));
         minutenAnzeige.textContent = `Gesamt ${minStr(minGes)}`;
         if (!istLaser) return;
 
@@ -529,6 +547,14 @@ export async function render(ctx, modus = 'voll') {
 
   function zeichneErgebnis(r) {
     leere(ergebnisBox);
+    if (r.preisUnsicher) {
+      ergebnisBox.appendChild(card('Ergebnis',
+        note('bad', r.unsicherheiten.filter(u => u.schwere === 'blockierend').map(u => u.text),
+          'Es wird kein Preis angezeigt, weil die Eingangsdaten ungeklärt sind:'),
+        h('.hint', { text: 'Bestätigen Sie die Einheit in der DXF-Karte. Danach erscheint der Preis wieder.' }),
+        pruefMeldungen()));
+      return;
+    }
     const kacheln = h('.results', null,
       res('Verkaufspreis netto', eur(r.vkNettoCent), '', r.mindestwertAngewendet ? `Mindestauftragswert ${eur(r.mindestwertCent)}` : `Kalkulation ${eur(r.kalkulationCent)}`, true),
       res('Preis je Stück', eur(r.vkProStueckCent), '', `${r.stueckzahl} Stück`, true),
@@ -537,6 +563,7 @@ export async function render(ctx, modus = 'voll') {
     );
     ergebnisBox.appendChild(card('Ergebnis', kacheln,
       r.warnungen.length ? note('warn', r.warnungen) : null,
+      r.unsicherheiten.length ? note('warn', r.unsicherheiten.map(u => u.text), 'Eingeschränkte Verlässlichkeit:') : null,
       pruefMeldungen()));
   }
 
@@ -550,6 +577,7 @@ export async function render(ctx, modus = 'voll') {
 
   function zeichneDetails(r) {
     leere(detailBox);
+    if (r.preisUnsicher) return;   // keine Detailzahlen zu einem gesperrten Preis
     const d = h('.detail');
 
     /* Material */

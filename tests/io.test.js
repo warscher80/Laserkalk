@@ -256,3 +256,116 @@ test('Der Adapter gibt Kopien heraus, keine Verweise', async () => {
   const gelesen = await a.get('materials', 'x');
   assert.equal(gelesen.tief.wert, 1, 'eine Aenderung am Original darf die Datenbank nicht veraendern');
 });
+
+/* ------------------------------------------------------------------ */
+/* Inhaltsprüfung vor dem Einspielen                                   */
+/* ------------------------------------------------------------------ */
+
+test('validiereDaten laesst einen sauberen Bestand durch', async () => {
+  const { validiereDaten } = await import('../www/js/io/backup.js');
+  const r = validiereDaten({
+    materialGroups: [{ id: 'g1', name: 'Stahl', dichteStd: 7850 }],
+    materials: [{ id: 'm1', groupId: 'g1', werkstoff: 'S235JR', dickeMm: 2, dichte: 7850, ekTafelCent: 10000 }],
+    processes: [{ id: 'p1', name: 'Entgraten', satzCent: 6500 }],
+    gases: [{ id: 'x1', name: 'N2', modus: 'proStunde', preisCent: 900 }],
+    cutParams: [{ id: 'c1', werkstoff: 'S235JR', dickeMm: 2, vSchnittMmMin: 8000, piercingSek: 0.3 }],
+    calculations: [{ id: 'k1', stueckzahl: 10, verschnittBp: 1000 }],
+  });
+  assert.equal(r.ok, true, r.fehler.join(' '));
+  assert.equal(r.anzahl.materials, 1);
+});
+
+test('validiereDaten lehnt rechnerisch gefaehrliche Werte ab', async () => {
+  const { validiereDaten } = await import('../www/js/io/backup.js');
+  const faelle = [
+    [{ materials: [{ id: 'm', werkstoff: 'S', dickeMm: 0, dichte: 7850 }] }, /Blechst/],
+    [{ materials: [{ id: 'm', werkstoff: 'S', dickeMm: 2, dichte: 0 }] }, /Dichte/],
+    [{ materials: [{ id: 'm', werkstoff: 'S', dickeMm: 2, dichte: 7850, ekTafelCent: 12.5 }] }, /Cent-Betrag/],
+    [{ materials: [{ id: 'm', werkstoff: 'S', dickeMm: 2, dichte: 7850, ekTafelCent: -1 }] }, /Cent-Betrag/],
+    [{ materials: [{ id: 'm', werkstoff: 'S', dickeMm: NaN, dichte: 7850 }] }, /Blechst/],
+    [{ cutParams: [{ id: 'c', werkstoff: 'S', dickeMm: 2, vSchnittMmMin: 0 }] }, /Schnittgeschwindigkeit/],
+    [{ gases: [{ id: 'g', name: 'X', modus: 'irgendwas', preisCent: 0 }] }, /Abrechnungsart/],
+    [{ calculations: [{ id: 'k', stueckzahl: 0 }] }, /Stückzahl/],
+    [{ processes: [{ id: 'p', name: 'X', satzCent: -5 }] }, /Stundensatz/],
+    [{ materialGroups: [{ id: 'g', name: 'X', dichteStd: 0 }] }, /Dichte/],
+  ];
+  for (const [daten, muster] of faelle) {
+    const r = validiereDaten(daten);
+    assert.equal(r.ok, false, 'durchgelassen: ' + JSON.stringify(daten));
+    assert.ok(r.fehler.some(f => muster.test(f)), `erwartet ${muster}, war: ${r.fehler.join(' | ')}`);
+  }
+});
+
+test('validiereDaten behandelt doppelte Kennungen', async () => {
+  const { validiereDaten } = await import('../www/js/io/backup.js');
+  const r = validiereDaten({
+    processes: [
+      { id: 'p1', name: 'Alt', satzCent: 100 },
+      { id: 'p1', name: 'Neu', satzCent: 200 },
+    ],
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.daten.processes.length, 1, 'die doppelte Kennung darf nur einmal ankommen');
+  assert.equal(r.daten.processes[0].name, 'Neu', 'der letzte Eintrag gewinnt');
+  assert.ok(r.warnungen.some(w => /mehrfach/.test(w)));
+});
+
+test('validiereDaten ueberspringt Eintraege ohne Kennung', async () => {
+  const { validiereDaten } = await import('../www/js/io/backup.js');
+  const r = validiereDaten({ processes: [{ name: 'ohne id', satzCent: 1 }, { id: 'p', name: 'ok', satzCent: 1 }] });
+  assert.equal(r.daten.processes.length, 1);
+  assert.ok(r.warnungen.some(w => /ohne gültige Kennung/.test(w)));
+});
+
+test('Backup traegt die Schemaversion und lehnt neuere ab', async () => {
+  const { baueBackup, leseBackup } = await import('../www/js/io/backup.js');
+  const { DB_VERSION } = await import('../www/js/core/db.js');
+  const kopf = JSON.parse(baueBackup({ processes: [{ id: 'p', name: 'X', satzCent: 1 }] }, ['processes']));
+  assert.equal(kopf.schemaVersion, DB_VERSION);
+
+  kopf.schemaVersion = DB_VERSION + 1;
+  const r = leseBackup(JSON.stringify(kopf));
+  assert.equal(r.ok, false);
+  assert.match(r.fehler, /neueren Datenbankstand/);
+});
+
+/* ------------------------------------------------------------------ */
+/* Atomares Wiederherstellen                                           */
+/* ------------------------------------------------------------------ */
+
+test('replaceAll schreibt mehrere Bereiche in einem Zug', async () => {
+  const a = await new MemoryAdapter().open();
+  await a.bulkPut('processes', [{ id: 'alt', name: 'Alt' }]);
+  await a.bulkPut('gases', [{ id: 'g-alt', name: 'Alt' }]);
+
+  await a.replaceAll({ processes: [{ id: 'neu', name: 'Neu' }] }, true);
+  assert.deepEqual((await a.all('processes')).map(o => o.id), ['neu'], 'ersetzen leert den Bereich');
+  assert.deepEqual((await a.all('gases')).map(o => o.id), ['g-alt'], 'nicht genannte Bereiche bleiben unberührt');
+
+  await a.replaceAll({ processes: [{ id: 'dazu', name: 'Dazu' }] }, false);
+  assert.deepEqual((await a.all('processes')).map(o => o.id).sort(), ['dazu', 'neu'], 'hinzufuegen behaelt Bestehendes');
+});
+
+test('replaceAll ignoriert unbekannte Bereiche', async () => {
+  const a = await new MemoryAdapter().open();
+  const n = await a.replaceAll({ gibtsNicht: [{ id: 'x' }], processes: [{ id: 'p' }] }, true);
+  assert.equal(n, 1);
+});
+
+test('Eine Wiederherstellung ohne bekannte Bereiche meldet KEINEN Erfolg', async () => {
+  const { store } = await import('../www/js/core/store.js');
+  const { MemoryAdapter: MA } = await import('../www/js/core/db.js');
+  store.adapter = await new MA().open();
+  for (const s of STORES) store.cache[s] = [];
+
+  for (const muell of [null, {}, { unbekannt: [{ id: 'x' }] }, { materials: 'keine Liste' }]) {
+    const r = await store.wiederherstellen(muell, 'ersetzen');
+    assert.equal(r.ok, false, JSON.stringify(muell));
+    assert.match(r.fehler, /nichts verändert/);
+  }
+
+  // Mit echten Daten geht es dann durch.
+  const ok = await store.wiederherstellen({ materials: [{ id: 'm1', werkstoff: 'S235JR', dickeMm: 2, dichte: 7850 }] }, 'ersetzen');
+  assert.equal(ok.ok, true);
+  assert.equal(ok.anzahl, 1);
+});

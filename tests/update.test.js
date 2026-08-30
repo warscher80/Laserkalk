@@ -199,3 +199,40 @@ test('Die mitgelieferte update.json ist gültig', () => {
     'Die Vorlage update.json muss die aktuelle Version nennen');
   assert.equal(r.info.versionName, APP_VERSION.name);
 });
+
+/**
+ * Der Service Worker liefert im Offline-Betrieb genau die Dateien aus, die in
+ * seiner Liste stehen. Fehlt dort ein neu hinzugekommenes Modul, lädt die App
+ * es weiter aus dem Netz — und mischt dann eine NEUE Datei mit ALTEN
+ * zwischengespeicherten Modulen. Solche Mischversionen sind besonders
+ * unangenehm, weil sie nur bei manchen Benutzern auftreten. Deshalb wird die
+ * Liste hier gegen den tatsächlichen Ordnerinhalt geprüft.
+ */
+test('Der Service Worker kennt jede ausgelieferte Datei', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const wurzel = fileURLToPath(new URL('../www/', import.meta.url));
+
+  const sw = readFileSync(wurzel + 'sw.js', 'utf8');
+  const block = sw.match(/const DATEIEN\s*=\s*\[([\s\S]*?)\];/);
+  assert.ok(block, 'Die Dateiliste im Service Worker wurde nicht gefunden.');
+  const gelistet = new Set([...block[1].matchAll(/'([^']+)'/g)].map(m => m[1]));
+
+  const gefunden = [];
+  (function lauf(ordner, praefix) {
+    for (const e of readdirSync(ordner, { withFileTypes: true })) {
+      if (e.isDirectory()) lauf(ordner + e.name + '/', praefix + e.name + '/');
+      else if (/\.(js|css|html|webmanifest)$/.test(e.name)) gefunden.push('./' + praefix + e.name);
+    }
+  })(wurzel, '');
+
+  // sw.js selbst darf NICHT im eigenen Cache stehen – sonst könnte sich der
+  // Worker nie mehr erneuern.
+  assert.equal(gelistet.has('./sw.js'), false, 'sw.js gehört nicht in die eigene Cache-Liste.');
+
+  const fehlend = gefunden.filter(d => d !== './sw.js' && !gelistet.has(d));
+  assert.deepEqual(fehlend, [], `Diese Dateien fehlen in der Cache-Liste von sw.js: ${fehlend.join(', ')}`);
+
+  const zuviel = [...gelistet].filter(d => !gefunden.includes(d) && !/\.(png|svg|ico|json)$/.test(d) && d !== './');
+  assert.deepEqual(zuviel, [], `Diese Einträge in sw.js gibt es gar nicht: ${zuviel.join(', ')}`);
+});

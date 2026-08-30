@@ -124,22 +124,65 @@ export function dxfKarte(o) {
   // aktualisiert, OHNE die Karte neu zu zeichnen – sonst verliert das gerade
   // bearbeitete Eingabefeld den Fokus.
   let anzeige = null;
+  let laeuft = false;      // Auswertung läuft gerade
 
   const neu = () => { anzeige = null; box.textContent = ''; box.appendChild(inhalt()); };
 
+  /** Obergrenze für die Dateigröße. Darüber ist die Auswertung sinnlos langsam. */
+  const MAX_MB = 30;
+
+  /**
+   * Wertet die Datei in einem eigenen Strang aus, damit die Oberfläche
+   * bedienbar bleibt. Kann der Browser keine Modul-Worker (alte WebViews),
+   * wird direkt gerechnet — dann blockiert es kurz, liefert aber dasselbe.
+   */
+  function analysiereNebenbei(text, opts) {
+    return new Promise((fertig, schiefgegangen) => {
+      let worker;
+      try {
+        worker = new Worker(new URL('../dxf/worker.js', import.meta.url), { type: 'module' });
+      } catch {
+        try { fertig(analysiereDxf(text, opts)); } catch (e) { schiefgegangen(e); }
+        return;
+      }
+      const abbruch = setTimeout(() => {
+        worker.terminate();
+        schiefgegangen(new DxfFehler(`Die Auswertung hat länger als 60 Sekunden gedauert und wurde abgebrochen. Die Zeichnung ist vermutlich zu umfangreich; bitte im CAD auf die Schnittkonturen reduzieren.`));
+      }, 60000);
+      worker.onmessage = (e) => {
+        clearTimeout(abbruch);
+        worker.terminate();
+        if (e.data.ok) fertig(e.data.ergebnis);
+        else schiefgegangen(e.data.art === 'DxfFehler' ? new DxfFehler(e.data.meldung) : new Error(e.data.meldung));
+      };
+      worker.onerror = () => {
+        // Worker nicht nutzbar (z. B. blockiert): still auf den Hauptstrang zurück.
+        clearTimeout(abbruch);
+        worker.terminate();
+        try { fertig(analysiereDxf(text, opts)); } catch (e) { schiefgegangen(e); }
+      };
+      worker.postMessage({ id: 1, text, opts });
+    });
+  }
+
   const laden = async (datei) => {
     if (!datei) return;
-    if (datei.size > 30 * 1024 * 1024) {
-      toast('Die Datei ist größer als 30 MB und wird nicht geladen.', 'bad');
+    const mb = datei.size / 1024 / 1024;
+    if (mb > MAX_MB) {
+      toast(`Die Datei ist ${mb.toFixed(1)} MB groß. Verarbeitet werden höchstens ${MAX_MB} MB — bitte im CAD auf die Schnittkonturen reduzieren (Text, Bemaßung und Hilfslinien entfernen).`, 'bad');
       return;
     }
+    if (datei.size === 0) { toast('Die Datei ist leer.', 'bad'); return; }
+
     let text;
     try { text = await leseDatei(datei); }
     catch (e) { toast(e.message, 'bad'); return; }
 
     const s = store.settings;
+    laeuft = true;
+    neu();
     try {
-      const roh = analysiereDxf(text, {
+      const roh = await analysiereNebenbei(text, {
         standardEinheit: s.dxfEinheitStandard,
         tolMm: s.dxfToleranzMm,
         flachToleranzMm: s.dxfFlachToleranzMm,
@@ -150,9 +193,12 @@ export function dxfKarte(o) {
       o.calc.verbrauch.methode = 'dxf';
       o.calc.verbrauch.proStueck = true;
       if (!o.calc.bauteil) o.calc.bauteil = datei.name.replace(/\.dxf$/i, '');
+      laeuft = false;
       o.aufAenderung();
       toast(roh.warnungen.length ? 'DXF geladen – bitte die Hinweise prüfen.' : 'DXF erfolgreich ausgewertet.', roh.warnungen.length ? 'warn' : 'ok');
     } catch (e) {
+      laeuft = false;
+      neu();
       if (e instanceof DxfFehler) toast(e.message, 'bad');
       else { console.error(e); toast('Die DXF-Datei konnte nicht gelesen werden: ' + (e.message || e), 'bad'); }
     }
@@ -161,6 +207,11 @@ export function dxfKarte(o) {
   const dateiWaehlen = async () => laden(await waehleDatei('.dxf,application/dxf,image/vnd.dxf,text/plain'));
 
   function inhalt() {
+    if (laeuft) {
+      return card('DXF-Import', h('.drop', null,
+        h('.d1', { text: 'Zeichnung wird ausgewertet …' }),
+        h('.d2', { text: 'Die Auswertung läuft nebenbei, die App bleibt bedienbar.' })));
+    }
     const d = o.calc.dxf;
     if (!d) {
       const drop = h('.drop', { onclick: dateiWaehlen },
@@ -261,7 +312,7 @@ export function dxfKarte(o) {
         num(d.manuelleFlaecheM2, (v) => { d.manuelleFlaecheM2 = Math.max(0, v); o.aufNeuBerechnen(); }, { unit: 'm²' })));
     }
     if (d.flaechenBasis === 'nesting') {
-      inhaltEl.appendChild(note('info', `Aus dem Nesting: ${fmtNum(d.nestingFlaecheProStueckM2, 5)} m² je Stück.`));
+      inhaltEl.appendChild(note('info', `Aus dem Rechteck-Nesting (Bounding Box, 0°/90°): ${fmtNum(d.nestingFlaecheProStueckM2, 5)} m² je Stück. Echtes Form-Nesting kann mehr Teile unterbringen.`));
     }
 
     /* --- Manuelle Korrekturen (§11: automatische Werte müssen korrigierbar sein) --- */

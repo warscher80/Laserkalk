@@ -360,13 +360,17 @@ export function flatten(parsed, opts = {}) {
 
   gehe(parsed.entities, IDENT, 0);
 
+  // §: Nicht ausgewertete Objekte IMMER mit Typ und Anzahl nennen — sonst
+  // verschwindet stillschweigend Geometrie aus der Fläche und der Schnittlänge.
+  const liste = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${k} (${v}×)`).join(', ');
+
   if (Object.keys(unbekannt).length) {
-    meldungen.push(`Nicht unterstützte Objekte übersprungen: ${Object.entries(unbekannt).map(([k, v]) => `${k} (${v}×)`).join(', ')}.`);
+    meldungen.push(`Nicht unterstützte Objekttypen übersprungen: ${liste(unbekannt)}. Falls dort Schnittkonturen liegen, fehlen sie in Fläche und Schnittlänge.`);
   }
-  if (ignoriert.HATCH) meldungen.push(`${ignoriert.HATCH} Schraffur(en) ignoriert – Schraffuren sind keine Schnittkonturen.`);
-  if (ignoriert.SOLID || ignoriert.TRACE) meldungen.push('Gefüllte Flächen (SOLID/TRACE) wurden ignoriert – sie sind keine Schnittkonturen.');
-  const bemassung = (ignoriert.DIMENSION || 0) + (ignoriert.TEXT || 0) + (ignoriert.MTEXT || 0) + (ignoriert.LEADER || 0);
-  if (bemassung) meldungen.push(`${bemassung} Text-/Bemaßungsobjekt(e) ignoriert.`);
+  if (Object.keys(ignoriert).length) {
+    meldungen.push(`Bewusst nicht als Schnittkontur gewertet: ${liste(ignoriert)}. Text, Bemaßung, Schraffuren und gefüllte Flächen werden nicht geschnitten.`);
+  }
 
   return { polys, meldungen, ignoriert, unbekannt, ignorierteLayer: [...ignorierteLayer] };
 }

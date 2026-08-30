@@ -115,19 +115,42 @@ App-ID und kann dafür **nicht** verwendet werden. Der Keystore und
 ## Tests
 
 ```bash
-cd laserkalk
-node --test tests/*.test.js
+node --test tests/*.test.js      # im Ordner laserkalk/
 ```
 
-86 Tests über Geldrechnung, Kalkulationskern, Materialableitung,
-DXF-Parser und -Geometrie, Nesting, Maschinenkalkulation, Backup, CSV und
-Update-Prüfung — darunter ein Wächter, der Alarm schlägt, wenn Version,
-Gradle-Datei und Service-Worker-Cache auseinanderlaufen.
+**189 Tests** über Geldrechnung, Eingabeprüfung, Kalkulationskern,
+Materialableitung, Laserzeit, DXF-Parser und -Geometrie, Nesting,
+Maschinenkalkulation, Backup/Wiederherstellung, CSV und Update-Prüfung.
 Sie laufen ohne Browser, weil Logik und Oberfläche getrennt sind.
 
-Enthalten ist unter anderem die Beispielrechnung aus der Anforderung
-(Material 30 € + 25 %, CAD 10 min, Laser 120 min, Entgraten 15 min):
-Ergebnis **125,42 € netto**, **12,54 € je Stück** — auf den Cent.
+Verankert sind unter anderem:
+
+| Datei | Was sie absichert |
+|---|---|
+| `kalkulation.test.js` | Alle Verbrauchsmethoden, Verschnitt, Aufschlag, Gewinn, Mindestwert, MwSt., Zeitmodi, Gas, Zusatzkosten, Staffel, Rundung, sehr kleine und sehr große Beträge |
+| `dxf-referenz.test.js` | 20 erzeugte Referenz-DXF mit von Hand hergeleiteten Sollwerten |
+| `laserzeit.test.js` | Einheiten und Randfälle der Zeitschätzung, Auswahl der Schnittparameter |
+| `eingaben.test.js` | Zahlenformate, mitkopierte Einheiten, abgelehnter Unsinn |
+| `io.test.js` | Backup-Prüfung, atomare Wiederherstellung |
+| `update.test.js` | Version, Gradle-Datei, Service-Worker-Cache und Dateiliste dürfen nicht auseinanderlaufen |
+
+**Der Regressionsfall des Betriebs** (S235JR 2 mm, Tafel 2500×1250 zu 100,00 €,
+Bauteil 1000×500 mm, 10 Stück, 10 % Verschnitt, 25 % Aufschlag, CAD 10 min,
+Laser 2 min/Stk, Bediener 15 min, Entgraten 1 min/Stk, 15 % Gewinn, 20 % MwSt.)
+steht in `kalkulation.test.js` und muss auf den Cent ergeben:
+Material-EK **160,00 €** · Material-VK **220,00 €** · Zeitkosten **48,75 €** ·
+Kalkulationspreis **268,75 €** · **309,06 € netto** · **30,91 € je Stück** ·
+**370,87 € brutto**.
+
+### Wo gerundet wird
+
+Kaufmännisch (halb vom Nullpunkt weg) und nur an diesen Stellen: Materialkosten,
+Verschnitt, Materialaufschlag, jede Zeitposition, Gas, jede Zusatzposition,
+Gewinn, MwSt., Preis je Stück. **Jede Position wird einzeln gerundet und erst
+dann summiert** — deshalb passt die Detailaufstellung auf den Cent zur Summe.
+Mengen (Minuten, m², kg) werden vor der Geldrechnung von Gleitkomma-Rauschen
+befreit (`glatt()`), sonst kippt z. B. 0,7 min × 3 Stück eine halbe
+Cent-Rundung.
 
 ---
 

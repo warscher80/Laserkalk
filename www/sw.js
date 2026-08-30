@@ -15,7 +15,7 @@
  * (tests/version.test.js) vergleicht die Kennung mit core/version.js.
  */
 
-const CACHE = 'laserkalk-1.0.2-3';
+const CACHE = 'laserkalk-1.0.3-4';
 
 const DATEIEN = [
   './', './index.html', './manifest.webmanifest',
@@ -28,6 +28,7 @@ const DATEIEN = [
   './js/core/material.js', './js/core/store.js', './js/core/version.js', './js/core/update.js',
   './js/calc/engine.js', './js/calc/nesting.js', './js/calc/machine.js',
   './js/dxf/parser.js', './js/dxf/geometry.js', './js/dxf/analyze.js', './js/dxf/render.js',
+  './js/dxf/worker.js',
   './js/io/backup.js', './js/io/files.js',
 ];
 
