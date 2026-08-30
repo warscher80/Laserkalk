@@ -17,7 +17,7 @@ import { eur, centStr, num as fmtNum } from '../core/money.js';
 import { uid, stampDe } from '../core/util.js';
 import { STORES } from '../core/db.js';
 import { baueBackup, leseBackup, materialienCsv, leseMaterialCsv, kalkulationenCsv, dateiname } from '../io/backup.js';
-import { speichereText, waehleDatei, leseDatei } from '../io/files.js';
+import { speichereText, waehleDatei, leseDatei, istIOS } from '../io/files.js';
 
 const BEREICHE = [
   ['saetze', 'Stundensätze & Aufschläge', 'Laser, CAD, Bediener, Material, Gewinn, MwSt.'],
@@ -644,6 +644,17 @@ function backup(ctx) {
     toast(`${neu.length} Bleche importiert.`, 'ok');
     ctx.gehe('/materials');
   };
+
+  // iOS räumt den Speicher von Webseiten auf, die länger nicht benutzt werden.
+  // Bei Kalkulationsdaten wäre das schmerzhaft, deshalb ein deutlicher Hinweis.
+  if (istIOS()) {
+    el.appendChild(note('warn',
+      'Auf dem iPhone bitte beachten: Solange die App nur als Lesezeichen in Safari läuft, '
+      + 'kann iOS die gespeicherten Daten nach etwa einer Woche ohne Benutzung löschen. '
+      + 'Legen Sie die App über „Teilen → Zum Home-Bildschirm" ab — dann bleiben die Daten erhalten. '
+      + 'Speichern Sie zusätzlich regelmäßig ein Backup.',
+      'Datensicherheit auf dem iPhone:'));
+  }
 
   el.appendChild(card('Vollständiges Backup',
     h('.hint', { text: 'Enthält Einstellungen, Materialien, Schnittparameter, Bearbeitungsarten, Gase, Maschinen und alle Kalkulationen.' }),

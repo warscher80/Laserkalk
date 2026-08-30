@@ -15,12 +15,12 @@
  * (tests/version.test.js) vergleicht die Kennung mit core/version.js.
  */
 
-const CACHE = 'laserkalk-1.0.0-1';
+const CACHE = 'laserkalk-1.0.1-2';
 
 const DATEIEN = [
   './', './index.html', './manifest.webmanifest',
   './css/app.css',
-  './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
+  './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png',
   './js/ui/main.js', './js/ui/app.js', './js/ui/components.js', './js/ui/home.js',
   './js/ui/calcview.js', './js/ui/quick.js', './js/ui/materials.js', './js/ui/history.js',
   './js/ui/settings.js', './js/ui/matpicker.js', './js/ui/dxfcard.js',

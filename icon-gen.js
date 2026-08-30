@@ -263,6 +263,8 @@ png(join(ICONS, 'icon-192.png'), 192, 192, rastere(192, { radius: 22 }));
 png(join(ICONS, 'icon-512.png'), 512, 512, rastere(512, { radius: 22 }));
 // maskable: Motiv im sicheren Bereich (80 %), Kachel als Vollkreis
 png(join(ICONS, 'icon-maskable-512.png'), 512, 512, rastere(512, { radius: 50, anteil: 0.8 }));
+// iOS rundet das Symbol selbst ab und mag keine Transparenz -> randlos, ohne Ecken.
+png(join(ICONS, 'apple-touch-icon.png'), 180, 180, rastere(180, { radius: 0 }));
 console.log('PWA-Symbole erzeugt');
 
 /* --- Android --- */

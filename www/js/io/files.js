@@ -64,12 +64,26 @@ export function leseDatei(file) {
   });
 }
 
-/** Öffnet den Dateiauswahl-Dialog und liefert die gewählte Datei. */
+/** iPhone/iPad? Dort verhält sich die Dateiauswahl anders. */
+export function istIOS() {
+  const ua = navigator.userAgent || '';
+  // iPadOS meldet sich seit Version 13 als Macintosh – am Touchscreen erkennbar.
+  return /iPad|iPhone|iPod/.test(ua) ||
+    (/Macintosh/.test(ua) && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1);
+}
+
+/**
+ * Öffnet den Dateiauswahl-Dialog und liefert die gewählte Datei.
+ *
+ * Auf dem iPhone wird `accept` bewusst NICHT gesetzt: iOS kennt für DXF keinen
+ * Dateityp, und mit einer Einschränkung erscheinen die .dxf-Dateien in der
+ * Dateien-App ausgegraut und lassen sich nicht auswählen.
+ */
 export function waehleDatei(accept) {
   return new Promise(resolve => {
     const inp = document.createElement('input');
     inp.type = 'file';
-    inp.accept = accept;
+    if (accept && !istIOS()) inp.accept = accept;
     inp.style.position = 'fixed';
     inp.style.left = '-9999px';
     document.body.appendChild(inp);
