@@ -1,8 +1,8 @@
 {
-  "_hinweis": "Vorlage für die Update-Prüfung. Diese Datei auf einen Webserver legen (z. B. GitHub Pages) und ihre Adresse in der App unter Einstellungen -> Updates eintragen. Bei jeder neuen Version hier versionCode, versionName, apkUrl und hinweise anpassen.",
-  "versionCode": 2,
-  "versionName": "1.0.1",
-  "apkUrl": "",
-  "hinweise": "iPhone-Unterstuetzung: Dateiauswahl fuer DXF, Symbol fuer den Home-Bildschirm.",
+  "_hinweis": "Update-Prüfung für LaserKalk. Liegt unter https://warscher80.github.io/Laserkalk/update.json und wird von der App abgefragt. Bei jeder neuen Version hier versionCode, versionName, apkUrl und hinweise anpassen.",
+  "versionCode": 3,
+  "versionName": "1.0.2",
+  "apkUrl": "https://warscher80.github.io/Laserkalk/LaserKalk-1.0.2.apk",
+  "hinweise": "iPhone-Unterstützung und Auto-Update eingerichtet.",
   "pflicht": false
 }

@@ -56,7 +56,7 @@ export function defaultSettings() {
      * Leer = keine Prüfung. Die App installiert nie selbst, sie meldet nur.
      * Aufbau der Datei: siehe update.json im Projektordner.
      */
-    updateUrl: '',
+    updateUrl: 'https://warscher80.github.io/Laserkalk/update.json',
     updateAktiv: true,
     updateIntervallStunden: 24,
     letzteUpdatePruefung: 0,

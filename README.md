@@ -44,11 +44,25 @@ npx http-server laserkalk/www -p 4611 -c-1
 Ein Server ist nötig, weil die App aus ES-Modulen besteht — über `file://`
 blockiert der Browser das Laden.
 
-### Auf dem Android-Handy ohne Store (PWA)
+### Als Web-App auf Handy oder Tablet (Android und iPhone)
 
-Die App im Chrome des Handys öffnen und **„Zum Startbildschirm hinzufügen"**
-wählen. Danach läuft sie offline wie eine installierte App; der Service Worker
+Die App liegt unter **https://warscher80.github.io/Laserkalk/**
+(GitHub Pages, Zweig `gh-pages`).
+
+- **Android:** in Chrome öffnen → Menü → „Zum Startbildschirm hinzufügen".
+- **iPhone/iPad:** in **Safari** öffnen (Chrome kann das auf iOS nicht) →
+  Teilen → „Zum Home-Bildschirm".
+
+Danach läuft sie offline wie eine installierte App; der Service Worker
 (`www/sw.js`) hält alle Dateien im Cache.
+
+**Wichtig auf iOS:** Solange die App nur ein Lesezeichen ist, kann Safari den
+Speicher nach etwa einer Woche ohne Benutzung leeren. Als Home-Bildschirm-App
+bleiben die Daten erhalten. Die App weist im Backup-Bereich darauf hin.
+
+**Neu veröffentlichen:** `www/` in den Zweig `gh-pages` schieben und dabei
+`CACHE` in `www/sw.js` erhöhen — sonst liefert der Service Worker weiter die
+alten Dateien aus.
 
 ### Als echte Android-App (Capacitor)
 
