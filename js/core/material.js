@@ -144,16 +144,42 @@ export function findeSchnittparameter(params, { groupId, werkstoff, dickeMm, gas
   }
   if (!best) return { param: null, exakt: false, hinweis: 'Kein passender Schnittparameter gefunden.' };
 
+  const bestDicke = Number(best.dickeMm) || 0;
+  const bestW = String(best.werkstoff || '').toLowerCase().trim();
+
   const exakt =
-    Math.abs((Number(best.dickeMm) || 0) - d) < 1e-9 &&
-    (!wNorm || String(best.werkstoff || '').toLowerCase().trim() === wNorm) &&
+    Math.abs(bestDicke - d) < 1e-9 &&
+    (!wNorm || bestW === wNorm) &&
     (!gNorm || String(best.gas || '').toLowerCase().trim() === gNorm);
+
+  /*
+   * AUSSERHALB DER TABELLE: Die Punktevergabe oben findet IMMER einen
+   * „besten" Satz – auch wenn er gar nicht passt. Eine 20-mm-Platte würde
+   * sonst mit den Werten für 3 mm gerechnet und die geschätzte Laserzeit
+   * wäre um ein Vielfaches zu kurz. Das wäre genau das stillschweigende
+   * Raten, das die App nicht tun darf. Deshalb wird ein solcher Treffer
+   * ausdrücklich als „außerhalb" gekennzeichnet; die Oberfläche übernimmt
+   * ihn dann nicht mehr von selbst.
+   */
+  const dickeAbw = d > 0 ? Math.abs(bestDicke - d) : 0;
+  const dickeWeit = d > 0 && dickeAbw > 0.5 && dickeAbw > d * 0.5;
+  const werkstoffFremd = !!wNorm && !!bestW && bestW !== wNorm &&
+    !(groupId && best.groupId && best.groupId === groupId);
+  const ausserhalb = dickeWeit || werkstoffFremd;
+
+  const gefunden = `${best.werkstoff} ${String(best.dickeMm).replace('.', ',')} mm / ${best.gas}`;
+  const gesucht = `${werkstoff || '?'} ${String(d).replace('.', ',')} mm / ${gas || '?'}`;
 
   return {
     param: best,
     exakt,
-    hinweis: exakt ? '' :
-      `Kein exakter Schnittparameter für ${werkstoff || '?'} ${String(d).replace('.', ',')} mm / ${gas || '?'}. ` +
-      `Verwendet wird ${best.werkstoff} ${String(best.dickeMm).replace('.', ',')} mm / ${best.gas}. Bitte prüfen.`,
+    /** true = der Treffer liegt außerhalb der hinterlegten Tabelle, nur als Anhalt brauchbar */
+    ausserhalb,
+    hinweis: exakt ? '' : ausserhalb
+      ? `Für ${gesucht} ist KEIN Schnittparameter hinterlegt. Der nächstliegende Eintrag ` +
+        `(${gefunden}) passt nicht dazu – die Laserzeit lässt sich daraus nicht schätzen. ` +
+        `Bitte den Parameter anlegen oder die Zeit von Hand eintragen.`
+      : `Kein exakter Schnittparameter für ${gesucht}. ` +
+        `Verwendet wird ${gefunden}. Bitte prüfen.`,
   };
 }

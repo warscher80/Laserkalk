@@ -16,7 +16,10 @@ import { maschinenkosten, maschinenmarge } from '../calc/machine.js';
 import { eur, centStr, num as fmtNum } from '../core/money.js';
 import { uid, stampDe } from '../core/util.js';
 import { STORES } from '../core/db.js';
-import { baueBackup, leseBackup, materialienCsv, leseMaterialCsv, kalkulationenCsv, dateiname } from '../io/backup.js';
+import {
+  baueBackup, leseBackup, validiereDaten, materialienCsv, leseMaterialCsv,
+  kalkulationenCsv, dateiname,
+} from '../io/backup.js';
 import { speichereText, waehleDatei, leseDatei, istIOS } from '../io/files.js';
 
 const BEREICHE = [
@@ -523,9 +526,9 @@ function backup(ctx) {
 
   const anzahlen = () => STORES.map(s => `${s}: ${store.all(s).length}`);
 
-  const exportiere = async (stores, basis, label) => {
+  const exportiere = async (stores, basis, label, eigeneDaten = null) => {
     const daten = {};
-    for (const s of stores) daten[s] = store.all(s);
+    for (const s of stores) daten[s] = eigeneDaten ? (eigeneDaten[s] || []) : store.all(s);
     const text = baueBackup(daten, stores);
     try {
       const art = await speichereText(text, dateiname(basis, 'json'), 'application/json');
@@ -566,40 +569,61 @@ function backup(ctx) {
   const importiereJson = async (nurStores) => {
     const datei = await waehleDatei('.json,application/json');
     if (!datei) return;
+    if (datei.size > 60 * 1024 * 1024) { toast('Die Datei ist größer als 60 MB und wird nicht gelesen.', 'bad'); return; }
     let text;
     try { text = await leseDatei(datei); } catch (e) { toast(e.message, 'bad'); return; }
+
+    // Stufe 1: Hülle, Format, Prüfsumme
     const gelesen = leseBackup(text);
     if (!gelesen.ok) { toast(gelesen.fehler, 'bad'); return; }
 
-    const stores = nurStores ? nurStores.filter(s => gelesen.daten[s]) : Object.keys(gelesen.daten);
-    const zusammenfassung = stores.map(s => `${beschriftung(s)}: ${gelesen.daten[s].length}`);
+    // Stufe 2: Inhalt vollständig prüfen – VOR jedem Schreibzugriff
+    const auswahl = {};
+    for (const b of (nurStores || Object.keys(gelesen.daten))) {
+      if (gelesen.daten[b]) auswahl[b] = gelesen.daten[b];
+    }
+    const geprueft = validiereDaten(auswahl);
+    const warnungen = [...gelesen.warnungen, ...geprueft.warnungen];
+
+    if (!geprueft.ok) {
+      await sheet('Backup wird abgelehnt', (schliessen) => h('div', null,
+        note('bad', geprueft.fehler.slice(0, 12), 'Das Backup enthält fehlerhafte Daten und wurde NICHT eingespielt:'),
+        geprueft.fehler.length > 12 ? h('.hint', { text: `… und ${geprueft.fehler.length - 12} weitere.` }) : null,
+        h('.hint', { text: 'Ihr aktueller Datenbestand ist unverändert.' }),
+        h('.sheetfoot', null, h('button.btn.primary', { text: 'Verstanden', onclick: () => schliessen(true) })),
+      ), { klickAussenSchliesst: false });
+      return;
+    }
+
+    const zusammenfassung = Object.entries(geprueft.anzahl)
+      .filter(([, n]) => n > 0).map(([b, n]) => `${beschriftung(b)}: ${n}`);
 
     const modus = await sheet('Backup einspielen', (schliessen) => h('div', null,
-      note('info', `Backup vom ${gelesen.kopf.erstellt ? new Date(gelesen.kopf.erstellt).toLocaleString('de-DE') : 'unbekannt'}`),
-      gelesen.warnungen.length ? note('warn', gelesen.warnungen) : null,
+      note('ok', `Backup vom ${gelesen.kopf.erstellt ? new Date(gelesen.kopf.erstellt).toLocaleString('de-DE') : 'unbekannt'} – geprüft, keine Fehler.`),
+      warnungen.length ? note('warn', warnungen.slice(0, 8)) : null,
       h('p.small', { text: 'Enthaltene Daten:' }),
       h('ul.small.muted', null, ...zusammenfassung.map(t => h('li', { text: t }))),
+      h('.hint', { text: 'Vor dem Einspielen wird automatisch eine Sicherheitskopie Ihres jetzigen Bestands angelegt.' }),
       h('.sheetfoot', null,
         h('button.btn', { text: 'Abbrechen', onclick: () => schliessen(null) }),
-        h('button.btn.primary', { text: 'Hinzufügen', onclick: () => schliessen('merge') }),
+        h('button.btn.primary', { text: 'Hinzufügen', onclick: () => schliessen('hinzufuegen') }),
       ),
-      h('button.btn.bad.block.mt', { text: 'Ersetzen (vorhandene Daten löschen)', onclick: () => schliessen('replace') }),
-      h('.hint', { text: '„Hinzufügen" überschreibt nur Einträge mit gleicher Kennung. „Ersetzen" löscht die betroffenen Bereiche vorher vollständig.' }),
+      h('button.btn.bad.block.mt', { text: 'Ersetzen (vorhandene Daten überschreiben)', onclick: () => schliessen('ersetzen') }),
+      h('.hint', { text: '„Hinzufügen" überschreibt nur Einträge mit gleicher Kennung. „Ersetzen" leert die betroffenen Bereiche vorher – beides läuft in einem Zug, ein Abbruch lässt keinen halben Zustand zurück.' }),
     ), { klickAussenSchliesst: false });
     if (!modus) return;
 
-    if (modus === 'replace') {
-      if (!await bestaetige('Wirklich ersetzen?',
-        `Die Bereiche ${stores.map(beschriftung).join(', ')} werden vollständig gelöscht und durch das Backup ersetzt. Das lässt sich nicht rückgängig machen.`,
-        'Ersetzen', true)) return;
-      for (const s of stores) await store.clear(s);
+    if (modus === 'ersetzen' && !await bestaetige('Wirklich ersetzen?',
+      `Die Bereiche ${Object.keys(geprueft.anzahl).filter(b => geprueft.anzahl[b] > 0).map(beschriftung).join(', ')} werden geleert und durch das Backup ersetzt.`,
+      'Ersetzen', true)) return;
+
+    const ergebnis = await store.wiederherstellen(geprueft.daten, modus);
+    if (!ergebnis.ok) { toast(ergebnis.fehler, 'bad'); return; }
+    if (ergebnis.sicherung && !ergebnis.sicherung.ok) {
+      toast('Eingespielt, aber ohne Sicherheitskopie: ' + ergebnis.sicherung.fehler, 'warn');
+    } else {
+      toast(`${ergebnis.anzahl} Einträge eingespielt.`, 'ok');
     }
-    let n = 0;
-    for (const s of stores) {
-      const arr = gelesen.daten[s];
-      if (arr?.length) { await store.bulkPut(s, arr); n += arr.length; }
-    }
-    toast(`${n} Einträge eingespielt.`, 'ok');
     ctx.gehe('/settings/backup');
     location.reload();
   };
@@ -654,6 +678,71 @@ function backup(ctx) {
       + 'Legen Sie die App über „Teilen → Zum Home-Bildschirm" ab — dann bleiben die Daten erhalten. '
       + 'Speichern Sie zusätzlich regelmäßig ein Backup.',
       'Datensicherheit auf dem iPhone:'));
+  }
+
+  /* --- Speicherzustand: Darf der Browser die Daten löschen? --- */
+  const speicherBox = h('div');
+  const zeichneSpeicher = async (anfordern = false) => {
+    leere(speicherBox);
+    const st = anfordern ? await store.speicherPruefen(true) : (store.speicher || await store.speicherPruefen(false));
+    const mb = (b) => (b === null || b === undefined) ? '—' : (b / 1024 / 1024).toFixed(1) + ' MB';
+
+    speicherBox.appendChild(h('.results', null,
+      res('Speicherort', store.adapter.kind === 'indexeddb' ? 'Gerätedatenbank' : 'nur Arbeitsspeicher', '',
+        store.adapter.kind === 'indexeddb' ? 'IndexedDB' : 'geht beim Schließen verloren'),
+      res('Dauerhaft', st.dauerhaft ? 'Ja' : (st.unterstuetzt ? 'Nein' : 'unbekannt'), '',
+        st.dauerhaft ? 'vom Browser zugesichert' : 'nicht zugesichert', st.dauerhaft),
+      res('Belegt', mb(st.belegtBytes), '', st.kontingentBytes ? 'von ' + mb(st.kontingentBytes) : null),
+    ));
+
+    if (store.adapter.kind !== 'indexeddb') {
+      speicherBox.appendChild(note('bad',
+        'Die Gerätedatenbank ist nicht verfügbar (Privatmodus oder gesperrter Speicher). Alles, was Sie jetzt eingeben, ist beim Schließen der App weg. Bitte den Privatmodus verlassen.'));
+    } else if (!st.dauerhaft) {
+      speicherBox.appendChild(note('warn',
+        'Der Browser hat nicht zugesichert, die Daten dauerhaft zu behalten. Bei Platzmangel oder längerer Nichtbenutzung kann er sie löschen. '
+        + 'Abhilfe: die App über „Zum Startbildschirm" bzw. „Zum Home-Bildschirm" installieren — und regelmäßig ein Backup speichern.'));
+      speicherBox.appendChild(h('button.btn.small.block.mt', {
+        text: 'Dauerhaften Speicher anfordern',
+        onclick: async (e) => {
+          e.currentTarget.disabled = true;
+          const neu2 = await store.speicherPruefen(true);
+          await zeichneSpeicher(false);
+          toast(neu2.dauerhaft ? 'Der Browser sichert die Daten jetzt dauerhaft zu.' : 'Der Browser hat die Zusicherung abgelehnt. Bitte die App installieren.', neu2.dauerhaft ? 'ok' : 'warn');
+        },
+      }));
+    } else {
+      speicherBox.appendChild(h('.hint', { text: 'Der Browser hat zugesichert, die Daten dauerhaft zu behalten. Ein Backup ersetzt das trotzdem nicht.' }));
+    }
+  };
+  zeichneSpeicher(false);
+  el.appendChild(card('Speicherzustand', speicherBox));
+
+  /* --- Sicherheitskopie aus einem früheren Restore --- */
+  const kopie = store.sicherheitskopie();
+  if (kopie) {
+    const anzahlKopie = Object.values(kopie.daten).reduce((a, b) => a + (b?.length || 0), 0);
+    el.appendChild(card('Sicherheitskopie',
+      note('info', `Vor der letzten Wiederherstellung wurde Ihr damaliger Bestand gesichert (${anzahlKopie} Einträge, ${stampDe(kopie.ts)}).`),
+      h('.btnrow.mt', null,
+        h('button.btn', {
+          text: 'Als Datei speichern',
+          onclick: () => exportiere(STORES, 'laserkalk-sicherheitskopie', 'Sicherheitskopie', kopie.daten),
+        }),
+        h('button.btn.bad', {
+          text: 'Diesen Stand zurückholen',
+          onclick: async () => {
+            if (!await bestaetige('Sicherheitskopie zurückholen?',
+              `Der jetzige Bestand wird durch den Stand von ${stampDe(kopie.ts)} ersetzt.`, 'Zurückholen', true)) return;
+            const g = validiereDaten(kopie.daten);
+            if (!g.ok) { toast('Die Sicherheitskopie ist beschädigt: ' + g.fehler[0], 'bad'); return; }
+            const r = await store.wiederherstellen(g.daten, 'ersetzen');
+            if (!r.ok) { toast(r.fehler, 'bad'); return; }
+            toast('Stand zurückgeholt.', 'ok');
+            location.reload();
+          },
+        }),
+      )));
   }
 
   el.appendChild(card('Vollständiges Backup',

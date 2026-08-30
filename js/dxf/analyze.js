@@ -187,12 +187,25 @@ export function verkette(offenePolys, tol) {
 
 /* ---------------- Prüfungen (§11) ---------------- */
 
+/**
+ * Prüft alle Segmente auf Zeichnungsfehler (§11).
+ *
+ * Doppelte Segmente: gleiche Endpunkte (in beliebiger Reihenfolge).
+ *
+ * Kollineare Überlappungen: Segmente werden nach ihrer GERADEN gruppiert
+ * (Richtung + Abstand vom Ursprung), nicht nach ihrer Lage im Raster. Das ist
+ * der entscheidende Unterschied zur naheliegenden Rasterlösung: zwei Segmente
+ * derselben Geraden können beliebig weit auseinander beginnen und trotzdem
+ * überlappen — ein Vergleich nur innerhalb einer Zelle übersieht genau das.
+ * Innerhalb einer Geraden werden die Segmente auf die Richtung projiziert und
+ * die Intervalle sortiert überstrichen; das findet jede Überlappung, auch
+ * lange und mehrfach gestapelte, in O(n log n).
+ */
 function pruefeSegmente(polys, tol, minSegmentMm) {
   let doppelt = 0, kurz = 0, null_ = 0, gesamt = 0;
-  const gesehen = new Map();
-  const zellen = new Map();
-  const zellGroesse = Math.max(tol * 50, 1);
+  const gesehen = new Set();
   let ueberlappend = 0;
+  let ueberlappungLaengeMm = 0;
   let zuVieleSegmente = false;
 
   const segs = [];
@@ -207,46 +220,76 @@ function pruefeSegmente(polys, tol, minSegmentMm) {
       if (len < minSegmentMm) kurz++;
       const ka = key(a[0], a[1], tol), kb = key(b[0], b[1], tol);
       const k = ka < kb ? `${ka}#${kb}` : `${kb}#${ka}`;
-      if (gesehen.has(k)) doppelt++; else gesehen.set(k, true);
-      segs.push({ a, b, len });
+      if (gesehen.has(k)) doppelt++; else gesehen.add(k);
+      segs.push({ a, b, len, idx: segs.length });
     }
   }
 
-  if (segs.length > 40000) {
+  if (segs.length > 200000) {
     zuVieleSegmente = true;
-  } else {
-    // Kollineare Überlappungen: nur Segmente in derselben Rasterzelle vergleichen.
-    for (let i = 0; i < segs.length; i++) {
-      const s = segs[i];
-      const mx = (s.a[0] + s.b[0]) / 2, my = (s.a[1] + s.b[1]) / 2;
-      const k = `${Math.floor(mx / zellGroesse)}|${Math.floor(my / zellGroesse)}`;
-      if (!zellen.has(k)) zellen.set(k, []);
-      zellen.get(k).push(i);
-    }
-    const abstandPunktZuStrecke = (p, a, b) => {
-      const vx = b[0] - a[0], vy = b[1] - a[1];
-      const l2 = vx * vx + vy * vy;
-      if (l2 < 1e-18) return Math.hypot(p[0] - a[0], p[1] - a[1]);
-      let t = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / l2;
-      t = Math.max(0, Math.min(1, t));
-      return Math.hypot(p[0] - (a[0] + t * vx), p[1] - (a[1] + t * vy));
-    };
-    for (const liste of zellen.values()) {
-      if (liste.length > 200) continue;
-      for (let x = 0; x < liste.length; x++) {
-        for (let y = x + 1; y < liste.length; y++) {
-          const s1 = segs[liste[x]], s2 = segs[liste[y]];
-          const m2 = [(s2.a[0] + s2.b[0]) / 2, (s2.a[1] + s2.b[1]) / 2];
-          const m1 = [(s1.a[0] + s1.b[0]) / 2, (s1.a[1] + s1.b[1]) / 2];
-          if (abstandPunktZuStrecke(m2, s1.a, s1.b) < tol && abstandPunktZuStrecke(m1, s2.a, s2.b) < tol) {
-            const kreuz = Math.abs((s1.b[0] - s1.a[0]) * (s2.b[1] - s2.a[1]) - (s1.b[1] - s1.a[1]) * (s2.b[0] - s2.a[0]));
-            if (kreuz / Math.max(s1.len * s2.len, 1e-9) < 0.02) ueberlappend++;
-          }
-        }
+    return { doppelt, kurz, null: null_, gesamt, ueberlappend, ueberlappungLaengeMm, zuVieleSegmente };
+  }
+
+  /* --- Nach Geraden gruppieren --- */
+  // Winkelauflösung: so fein, dass über die größte vorkommende Länge der
+  // Querversatz unter der Toleranz bleibt.
+  let maxLen = 0;
+  for (const s of segs) if (s.len > maxLen) maxLen = s.len;
+  const winkelSchritt = Math.max(1e-6, Math.min(0.05, tol / Math.max(maxLen, 1)));
+
+  const geraden = new Map();
+  for (const s of segs) {
+    let ux = (s.b[0] - s.a[0]) / s.len, uy = (s.b[1] - s.a[1]) / s.len;
+    // Richtung eindeutig machen: eine Gerade hat zwei Richtungen, wir nehmen eine.
+    if (ux < 0 || (Math.abs(ux) < 1e-12 && uy < 0)) { ux = -ux; uy = -uy; }
+    const winkel = Math.atan2(uy, ux);              // 0 .. pi
+    const c = -uy * s.a[0] + ux * s.a[1];           // Abstand vom Ursprung
+    const wi = Math.round(winkel / winkelSchritt);
+    const ci = Math.round(c / tol);
+    // Nachbarschlüssel mit ablegen, damit Werte knapp neben einer Schwelle
+    // nicht in getrennte Gruppen fallen.
+    for (const dw of [0, 1]) {
+      for (const dc of [0, 1]) {
+        const k = `${wi + dw}|${ci + dc}`;
+        if (!geraden.has(k)) geraden.set(k, []);
+        geraden.get(k).push({ s, ux, uy });
       }
     }
   }
-  return { doppelt, kurz, null: null_, gesamt, ueberlappend, zuVieleSegmente };
+
+  const gezaehlt = new Set();
+  for (const gruppe of geraden.values()) {
+    if (gruppe.length < 2) continue;
+    // Auf die Richtung der Gruppe projizieren
+    const { ux, uy } = gruppe[0];
+    const intervalle = gruppe.map(({ s }, i) => {
+      const t1 = s.a[0] * ux + s.a[1] * uy;
+      const t2 = s.b[0] * ux + s.b[1] * uy;
+      return { von: Math.min(t1, t2), bis: Math.max(t1, t2), s, i };
+    }).sort((a, b) => a.von - b.von);
+
+    for (let i = 0; i < intervalle.length; i++) {
+      for (let j = i + 1; j < intervalle.length; j++) {
+        if (intervalle[j].von >= intervalle[i].bis - tol) break;   // sortiert: ab hier kein Treffer mehr
+        const ueberlapp = Math.min(intervalle[i].bis, intervalle[j].bis) - intervalle[j].von;
+        if (ueberlapp <= tol) continue;
+        // Querabstand der beiden Geraden prüfen (die Gruppierung ist grob)
+        const p = intervalle[j].s.a;
+        const q = intervalle[i].s.a;
+        const quer = Math.abs((p[0] - q[0]) * -uy + (p[1] - q[1]) * ux);
+        if (quer > tol) continue;
+        const ia = intervalle[i].s.idx, ib = intervalle[j].s.idx;
+        if (ia === ib) continue;
+        const paar = ia < ib ? `${ia}#${ib}` : `${ib}#${ia}`;
+        if (gezaehlt.has(paar)) continue;
+        gezaehlt.add(paar);
+        ueberlappend++;
+        ueberlappungLaengeMm += ueberlapp;
+      }
+    }
+  }
+
+  return { doppelt, kurz, null: null_, gesamt, ueberlappend, ueberlappungLaengeMm, zuVieleSegmente };
 }
 
 /* ---------------- Hauptanalyse ---------------- */
@@ -391,11 +434,16 @@ export function analysiereDxf(text, opts = {}) {
   if (offeneKetten.length) {
     warnungen.push(`Achtung: ${offeneKetten.length} offene ${offeneKetten.length === 1 ? 'Kontur' : 'Konturen'} erkannt. Flächen- und Gewichtsberechnung möglicherweise ungenau.`);
   }
-  if (pruef.doppelt) warnungen.push(`${pruef.doppelt} doppelte Linien erkannt. Die Schnittlänge kann dadurch zu groß sein.`);
-  if (pruef.ueberlappend) warnungen.push(`${pruef.ueberlappend} überlappende Linien erkannt. Bitte die Zeichnung im CAD bereinigen.`);
+  if (pruef.doppelt) warnungen.push(`${pruef.doppelt} doppelte Linien erkannt. Schnittlänge und Einstiche können dadurch zu groß sein.`);
+  if (pruef.ueberlappend) {
+    const l = pruef.ueberlappungLaengeMm;
+    warnungen.push(
+      `${pruef.ueberlappend} überlappende Linienpaare erkannt (zusammen ${l < 10 ? l.toFixed(2) : l.toFixed(0)} mm). ` +
+      `Die Schnittlänge ist dadurch um bis zu diesen Betrag zu groß. Bitte die Zeichnung im CAD bereinigen.`);
+  }
   if (pruef.kurz) warnungen.push(`${pruef.kurz} extrem kurze Segmente (< ${String(minSegmentMm).replace('.', ',')} mm) erkannt. Sie können am Laser zu Brandstellen führen.`);
   if (pruef.null) warnungen.push(`${pruef.null} Segmente ohne Länge erkannt und übersprungen.`);
-  if (pruef.zuVieleSegmente) meldungen.push('Sehr große Zeichnung – die Überlappungsprüfung wurde übersprungen.');
+  if (pruef.zuVieleSegmente) warnungen.push(`Sehr große Zeichnung (über 200.000 Segmente) – die Prüfung auf doppelte und überlappende Linien wurde übersprungen. Schnittlänge und Einstiche sind daher ungeprüft.`);
   if (!konturen.length) warnungen.push('Es wurde keine geschlossene Kontur gefunden. Fläche und Gewicht können nicht berechnet werden – bitte die Bounding Box als Materialbasis verwenden.');
   if (nettoFlaecheMm2 <= 0 && konturen.length) warnungen.push('Die berechnete Nettofläche ist 0. Bitte die Zeichnung prüfen.');
   if (einheitUnsicher) warnungen.push(auto.hinweis || 'Die Einheit der DXF-Datei ist nicht eindeutig. Bitte bestätigen.');
@@ -484,10 +532,22 @@ export function gewichtKg(flaecheM2, dickeMm, dichte) {
  *   Schnittlänge / Schnittgeschwindigkeit + Einstiche × Piercing-Zeit + Nebenzeit
  */
 export function laserzeitMin({ schnittlaengeMm, einstiche, vSchnittMmMin, piercingSek, nebenzeitSek = 0 }) {
-  const v = Number(vSchnittMmMin) || 0;
+  // Einheiten: Schnittlänge mm, Geschwindigkeit mm/min, Piercing und Nebenzeit
+  // Sekunden. Ergebnis Minuten je Stück.
+  const v = zahl(vSchnittMmMin);
+  // Ohne gültige Schnittgeschwindigkeit gibt es KEINE Schätzung. Nicht 0 –
+  // eine 0 sähe aus wie „geht ganz schnell" und wäre eine stille Falschangabe.
   if (!(v > 0)) return null;
-  const schneidenMin = (Number(schnittlaengeMm) || 0) / v;
-  const piercingMin = ((Number(einstiche) || 0) * (Number(piercingSek) || 0)) / 60;
-  const nebenMin = (Number(nebenzeitSek) || 0) / 60;
-  return schneidenMin + piercingMin + nebenMin;
+  const laenge = zahl(schnittlaengeMm);
+  const schneidenMin = laenge / v;
+  const piercingMin = (zahl(einstiche) * zahl(piercingSek)) / 60;
+  const nebenMin = zahl(nebenzeitSek) / 60;
+  const min = schneidenMin + piercingMin + nebenMin;
+  return Number.isFinite(min) ? min : null;
+}
+
+/** Nicht-Zahlen, Unendlich und negative Werte haben in einer Zeitschätzung nichts verloren. */
+function zahl(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }

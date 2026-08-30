@@ -17,6 +17,26 @@ export function roundHalf(x) {
 }
 
 /**
+ * Entfernt Gleitkomma-Rauschen aus einer MENGE (Minuten, m², kg, Stück).
+ *
+ * Warum das nötig ist: 0,7 min × 3 Stück ergibt in Gleitkomma-Arithmetik
+ * 2,0999999999999996 statt 2,1. Bei 65 €/h sind das 227,49999… statt
+ * 227,5 Cent — die kaufmännische Rundung kippt und der Kunde bekommt
+ * 2,27 € statt 2,28 € berechnet. Derselbe Fehlertyp wie bei „1,005 €"
+ * (siehe toCent), nur eine Stufe früher.
+ *
+ * 12 signifikante Stellen liegen weit über jeder Eingabegenauigkeit
+ * (Minuten, Millimeter, Kilogramm) und weit unter der Auflösung von
+ * double — das Rauschen verschwindet, echte Werte bleiben unangetastet.
+ * Nur für Mengen; Geld ist immer schon ganzzahliger Cent.
+ */
+export function glatt(x) {
+  if (!Number.isFinite(x)) return 0;
+  if (x === 0) return 0;
+  return Number(x.toPrecision(12));
+}
+
+/**
  * Wandelt eine Benutzereingabe in eine Zahl.
  * Akzeptiert deutsches ("1.234,56") und englisches ("1234.56") Format.
  * Leere/ungültige Eingabe -> fallback.
@@ -147,6 +167,109 @@ export function costFromQty(menge, einzelCent) {
 export function divCent(cent, teiler) {
   if (!Number.isFinite(teiler) || teiler === 0) return 0;
   return roundHalf(cent / teiler);
+}
+
+/* ------------------------------------------------------------------ */
+/* Eingabeprüfung (§41)                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Bekannte Einheiten und ihre Normalform. Alles, was hier nicht steht,
+ * gilt als „keine Zahl" — nicht als 0.
+ */
+const EINHEIT_NORM = {
+  mm: 'mm', millimeter: 'mm',
+  cm: 'cm', zentimeter: 'cm',
+  m: 'm', meter: 'm',
+  'm²': 'm²', m2: 'm²', qm: 'm²', quadratmeter: 'm²',
+  'mm²': 'mm²', mm2: 'mm²',
+  kg: 'kg', kilo: 'kg', kilogramm: 'kg',
+  g: 'g', gramm: 'g', t: 't', tonnen: 't',
+  min: 'min', minute: 'min', minuten: 'min',
+  sek: 's', sekunde: 's', sekunden: 's', s: 's',
+  h: 'h', std: 'h', stunde: 'h', stunden: 'h',
+  stk: 'stk', 'stück': 'stk', st: 'stk', x: 'stk',
+  '%': '%', prozent: '%',
+  '€': '€', eur: '€', euro: '€',
+  '€/h': '€/h', 'eur/h': '€/h', '€/std': '€/h',
+  '€/m²': '€/m²', '€/m2': '€/m²',
+  '€/kg': '€/kg',
+  'mm/min': 'mm/min', 'm/min': 'm/min',
+  'kg/m³': 'kg/m³', 'kg/m3': 'kg/m³',
+};
+
+function normEinheit(text) {
+  const t = String(text || '').toLowerCase().replace(/\s+/g, '');
+  return EINHEIT_NORM[t] || (t ? null : '');
+}
+
+/**
+ * Prüft eine Benutzereingabe für ein Zahlenfeld — OHNE stillschweigend zu raten.
+ *
+ * Der Unterschied zu parseNum(): dort wird jede unverständliche Eingabe zu 0.
+ * Das ist im Betrieb gefährlich — ein vertippter Einkaufspreis würde
+ * kommentarlos zu „kostenlos", und ein aus dem CAD kopiertes „12,5 mm"
+ * würde zu 0 mm. Diese Funktion sagt stattdessen, WARUM sie die Eingabe
+ * nicht annimmt; die Oberfläche behält dann den letzten gültigen Wert.
+ *
+ * Eine mitkopierte Einheit ist erlaubt, wenn sie zur Einheit des Feldes
+ * passt. Eine FREMDE Einheit („2,5 cm" in einem mm-Feld) wird abgelehnt und
+ * nicht etwa umgerechnet oder ignoriert — Umrechnen wäre geraten.
+ *
+ * @param {string|number} eingabe
+ * @param {{einheit?: string}} opts  erwartete Einheit des Feldes, z. B. 'mm'
+ * @returns {{ok: boolean, wert: number|null, text: string, leer: boolean, grund: string}}
+ *          `text` ist der reine Zahlenteil ohne Einheit — für toCent(), das
+ *          bewusst über die Ziffern rechnet und nicht über die Gleitkommazahl.
+ */
+export function pruefeZahl(eingabe, { einheit = '' } = {}) {
+  if (typeof eingabe === 'number') {
+    return Number.isFinite(eingabe)
+      ? { ok: true, wert: eingabe, text: String(eingabe), leer: false, grund: '' }
+      : { ok: false, wert: null, text: '', leer: false, grund: 'Keine gültige Zahl.' };
+  }
+  let s = String(eingabe ?? '').trim();
+  if (!s) return { ok: true, wert: 0, text: '', leer: true, grund: '' };
+
+  // Einheit am Ende abtrennen (alles, was keine Ziffer, kein Trennzeichen
+  // und kein Vorzeichen ist).
+  const m = s.match(/^([-+]?[\d.,\s']*)(.*)$/);
+  const zahlTeil = (m ? m[1] : s).trim();
+  const rest = (m ? m[2] : '').trim();
+
+  // Gar keine Ziffer vorhanden: das ist Text, keine Zahl mit Einheit.
+  if (!/\d/.test(zahlTeil)) {
+    return { ok: false, wert: null, text: '', leer: false, grund: `„${s}" ist keine Zahl.` };
+  }
+
+  if (rest) {
+    const gefunden = normEinheit(rest);
+    if (gefunden === null) {
+      return { ok: false, wert: null, text: '', leer: false, grund: `„${rest}" ist keine bekannte Einheit.` };
+    }
+    const erwartet = normEinheit(einheit);
+    // Ein Feld ohne eigene Einheit nimmt keine mitkopierte Einheit an.
+    if (!erwartet) {
+      return { ok: false, wert: null, text: '', leer: false, grund: `Dieses Feld erwartet nur eine Zahl, ohne „${rest}".` };
+    }
+    // '70 €' in einem '€/h'-Feld ist in Ordnung, '2,5 cm' in einem mm-Feld nicht.
+    const passt = gefunden === erwartet || erwartet.startsWith(gefunden + '/');
+    if (!passt) {
+      return {
+        ok: false, wert: null, leer: false,
+        grund: `Einheit „${gefunden}" passt nicht zu diesem Feld (${erwartet}). Bitte den Wert in ${erwartet} eintragen.`,
+      };
+    }
+  }
+
+  if (!zahlTeil || zahlTeil === '-' || zahlTeil === '+') {
+    return { ok: false, wert: null, text: '', leer: false, grund: 'Keine Zahl eingegeben.' };
+  }
+  const wert = parseNum(zahlTeil, NaN);
+  if (!Number.isFinite(wert)) {
+    return { ok: false, wert: null, text: '', leer: false, grund: 'Keine gültige Zahl.' };
+  }
+  return { ok: true, wert, text: zahlTeil, leer: false, grund: '' };
 }
 
 const NF2 = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

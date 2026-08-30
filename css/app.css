@@ -5,19 +5,27 @@
 :root{
   --bg:#0e1318; --bg2:#141c24; --card:#1a232d; --card2:#212c38; --card3:#27333f;
   --line:#2c3946; --line2:#3a4a5a;
-  --txt:#e9eef3; --muted:#93a3b3; --muted2:#6d7d8d;
+  /* muted2 ist die schwächste Textfarbe. Sie muss auf ALLEN Kartenflächen
+     noch 4,5:1 erreichen – in der Werkstatt wird bei Tageslicht gelesen. */
+  --txt:#e9eef3; --muted:#93a3b3; --muted2:#8794a3;
   --accent:#ff9330; --accent2:#ffb163; --accentInk:#241403;
+  /* Akzentfarbe als SCHRIFT. Im Dunkelmodus ist das dasselbe Orange; im
+     Hellmodus braucht Schrift einen dunkleren Ton, sonst bleibt sie unter
+     4,5:1 auf Weiß. --accent bleibt die Flächen- und Rahmenfarbe. */
+  --accentTxt:#ff9330;
   --blue:#4aa8ff; --ok:#3ddc84; --warn:#ffcf4d; --bad:#ff5f5f;
   --r:14px; --rs:10px;
   --tap:52px;
+  --tap-min:44px;   /* kleinstes zulässiges Touch-Ziel */
   --sh:0 8px 24px rgba(0,0,0,.42);
 }
 body.light{
   --bg:#eef2f6; --bg2:#e4eaf1; --card:#ffffff; --card2:#f4f7fa; --card3:#e9eff5;
   --line:#d3dde6; --line2:#bccadb;
-  --txt:#16202a; --muted:#5a6b7c; --muted2:#7d8d9d;
-  --accent:#e2700a; --accent2:#b85a06; --accentInk:#fff6ec;
-  --blue:#0f6fd1; --ok:#128a4b; --warn:#a97400; --bad:#c62828;
+  --txt:#16202a; --muted:#5a6b7c; --muted2:#5f6d7b;
+  /* Dunkle Schrift auf dem Orange: Weiß erreicht auf diesem Ton nur 3,0:1. */
+  --accent:#e2700a; --accent2:#b85a06; --accentInk:#2b1600; --accentTxt:#a85200;
+  --blue:#0c63bd; --ok:#128a4b; --warn:#8f6200; --bad:#c62828;
   --sh:0 6px 18px rgba(20,40,60,.12);
 }
 
@@ -70,7 +78,7 @@ header .hs{font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hi
 .banner .bt b{display:block; font-size:14.5px; font-weight:800}
 .banner .bt small{display:block; color:var(--muted); font-size:12px; margin-top:2px}
 .banner .bb{display:flex; gap:8px; flex:0 0 auto}
-.banner .bb .btn{min-height:40px; padding:9px 13px; font-size:13.5px; border-radius:10px}
+.banner .bb .btn{min-height:var(--tap-min); padding:9px 13px; font-size:13.5px; border-radius:10px}
 
 /* ---------- Inhalt ---------- */
 main{padding:12px 10px 8px; max-width:1180px; margin:0 auto}
@@ -88,6 +96,7 @@ body.haspricebar main{padding-bottom:calc(118px + env(safe-area-inset-bottom))}
 @media(min-width:900px){ .cols{grid-template-columns:1fr 1fr} .cols>.full{grid-column:1/-1} }
 
 .grid{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.grid>*{min-width:0}
 .grid.g3{grid-template-columns:repeat(3,1fr)}
 .grid.g1{grid-template-columns:1fr}
 .grid .full{grid-column:1/-1}
@@ -118,6 +127,13 @@ select{appearance:none; padding-right:36px;
   background-repeat:no-repeat; background-position:right 12px center}
 body.light select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235a6b7c' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>")}
 input:focus,select:focus,textarea:focus{border-color:var(--accent); background:var(--card3)}
+/* Ungültige Eingabe: sichtbar, aber der bisherige Wert bleibt bestehen. */
+input.ungueltig,input.ungueltig:focus{border-color:var(--bad); background:rgba(255,95,95,.10)}
+.hint.feldfehler{margin-top:4px}
+/* Sichtbarer Fokus für Tastaturbedienung – nur bei Tastatur, nicht bei Mausklick. */
+:focus-visible{outline:3px solid var(--accent); outline-offset:2px; border-radius:8px}
+.btn:focus-visible,.tile:focus-visible,.seg button:focus-visible,.iconbtn:focus-visible,
+.chip:focus-visible,.item:focus-visible,.switch:focus-visible{outline:3px solid var(--accent); outline-offset:2px}
 input::placeholder,textarea::placeholder{color:var(--muted2); font-weight:500}
 input:disabled,select:disabled{opacity:.55}
 input.err,select.err{border-color:var(--bad)}
@@ -132,9 +148,10 @@ input.err,select.err{border-color:var(--bad)}
 .seg{display:flex; background:var(--card2); border-radius:var(--rs); padding:3px; border:1px solid var(--line); gap:2px}
 .seg button{flex:1; min-width:0; border:0; background:transparent; color:var(--muted);
   font-weight:700; font-size:13px; padding:11px 6px; border-radius:8px; cursor:pointer;
-  font-family:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  font-family:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  min-height:var(--tap-min)}
 .seg button.on{background:var(--accent); color:var(--accentInk)}
-.seg.small button{padding:8px 5px; font-size:12px}
+.seg.small button{padding:8px 5px; font-size:12px; min-height:var(--tap-min)}
 .seg.wrap{flex-wrap:wrap}
 .seg.wrap button{flex:1 1 30%}
 
@@ -159,7 +176,7 @@ input.err,select.err{border-color:var(--bad)}
 .btn.primary{background:var(--accent); color:var(--accentInk); border-color:var(--accent)}
 .btn.ghost{background:transparent}
 .btn.bad{color:var(--bad); border-color:rgba(255,95,95,.4)}
-.btn.small{padding:9px 12px; font-size:13.5px; min-height:40px; border-radius:10px}
+.btn.small{padding:9px 12px; font-size:13.5px; min-height:var(--tap-min); border-radius:10px}
 .btn.block{width:100%}
 .btn:disabled{opacity:.5; pointer-events:none}
 .btnrow{display:flex; gap:10px; flex-wrap:wrap}
@@ -167,6 +184,9 @@ input.err,select.err{border-color:var(--bad)}
 
 /* Startseiten-Kacheln */
 .tiles{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+/* Ohne min-width:0 wachsen Rasterfelder auf die Breite ihres längsten Wortes
+   ("SCHNELLKALKULATION") und schieben die Seite waagrecht über den Rand. */
+.tiles>*{min-width:0}
 @media(min-width:760px){ .tiles{grid-template-columns:repeat(3,1fr)} }
 .tile{
   background:var(--card); border:1px solid var(--line); border-radius:18px;
@@ -178,9 +198,10 @@ input.err,select.err{border-color:var(--bad)}
 .tile.hero{grid-column:1/-1; min-height:104px; flex-direction:row; align-items:center;
   background:linear-gradient(135deg, rgba(255,147,48,.20), var(--card) 62%); border-color:rgba(255,147,48,.42)}
 .tile .ic{width:40px;height:40px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
-  border-radius:11px;background:var(--card3);color:var(--accent)}
+  border-radius:11px;background:var(--card3);color:var(--accentTxt)}
 .tile.hero .ic{width:52px;height:52px}
-.tile .tt{font-size:16px; font-weight:800; letter-spacing:.2px; line-height:1.2}
+.tile .tt{font-size:16px; font-weight:800; letter-spacing:.2px; line-height:1.2;
+  overflow-wrap:anywhere; hyphens:auto}
 .tile.hero .tt{font-size:20px}
 .tile .td{font-size:12px; color:var(--muted); font-weight:500; line-height:1.3}
 .tile svg{width:22px;height:22px;display:block}
@@ -188,6 +209,7 @@ input.err,select.err{border-color:var(--bad)}
 
 /* ---------- Ergebnisse ---------- */
 .results{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.results>*{min-width:0}
 .res{background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:11px 12px; min-width:0}
 .res .rl{font-size:10.5px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:.6px}
 .res .rv{font-size:22px; font-weight:800; margin-top:2px; line-height:1.05; font-variant-numeric:tabular-nums;
@@ -195,7 +217,7 @@ input.err,select.err{border-color:var(--bad)}
 .res .ru{font-size:12px; color:var(--muted); font-weight:700; margin-left:3px}
 .res .rs{font-size:11px; color:var(--muted2); margin-top:2px}
 .res.primary{border-color:var(--accent); background:linear-gradient(150deg, rgba(255,147,48,.16), var(--card2))}
-.res.primary .rv{color:var(--accent)}
+.res.primary .rv{color:var(--accentTxt)}
 .res.full{grid-column:1/-1}
 
 /* Preisleiste unten */
@@ -211,7 +233,11 @@ body.haspricebar #pricebar{display:flex}
 #pricebar .pl{font-size:10px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:.7px}
 #pricebar .pv{font-size:23px; font-weight:800; line-height:1.1; font-variant-numeric:tabular-nums;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-#pricebar .pb.main .pv{color:var(--accent)}
+#pricebar .pb.main .pv{color:var(--accentTxt)}
+/* Gesperrter Zustand: unübersehbar anders als ein gültiger Preis. */
+#pricebar.unsicher{background:rgba(255,95,95,.14); border-top-color:var(--bad)}
+#pricebar.unsicher .pl{color:var(--bad)}
+#pricebar.unsicher .pb.main .pv{color:var(--bad); font-size:16px; white-space:normal; line-height:1.2}
 #pricebar .pbtn{flex:0 0 auto}
 
 /* ---------- Listen ---------- */
@@ -231,7 +257,7 @@ body.haspricebar #pricebar{display:flex}
   padding:2px 6px; border-radius:5px; background:var(--card3); color:var(--muted); flex:0 0 auto}
 
 .rowbtns{display:flex; gap:6px; flex:0 0 auto}
-.iconbtn{width:40px; height:40px; border-radius:10px; border:1px solid var(--line); background:var(--card2);
+.iconbtn{width:var(--tap-min); height:var(--tap-min); border-radius:10px; border:1px solid var(--line); background:var(--card2);
   color:var(--muted); display:flex; align-items:center; justify-content:center; cursor:pointer; flex:0 0 auto}
 .iconbtn svg{width:18px;height:18px}
 .iconbtn:active{background:var(--card3)}
@@ -256,7 +282,7 @@ body.haspricebar #pricebar{display:flex}
 /* ---------- Detailaufstellung ---------- */
 .detail{font-variant-numeric:tabular-nums}
 .detail .dg{font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.8px;
-  color:var(--accent); margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--line)}
+  color:var(--accentTxt); margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--line)}
 .detail .dg:first-child{margin-top:0}
 .detail .dr{display:flex; gap:10px; align-items:baseline; padding:5px 0; font-size:14px}
 .detail .dr .dl{flex:1; min-width:0}
@@ -264,7 +290,7 @@ body.haspricebar #pricebar{display:flex}
 .detail .dr .dv{font-weight:700; flex:0 0 auto; white-space:nowrap}
 .detail .dr.sum{border-top:1px solid var(--line); margin-top:6px; padding-top:9px; font-size:15px; font-weight:800}
 .detail .dr.total{border-top:2px solid var(--accent); margin-top:8px; padding-top:11px; font-size:19px; font-weight:800}
-.detail .dr.total .dv{color:var(--accent); font-size:22px}
+.detail .dr.total .dv{color:var(--accentTxt); font-size:22px}
 .detail .dr.sub{color:var(--muted); font-size:13px}
 
 table.staffel{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:13.5px}
@@ -273,7 +299,7 @@ table.staffel th{text-align:right; font-size:11px; color:var(--muted); font-weig
 table.staffel th:first-child{text-align:left}
 table.staffel td{text-align:right; padding:7px 6px; border-bottom:1px solid var(--line)}
 table.staffel td:first-child{text-align:left; font-weight:700}
-table.staffel tr.now td{color:var(--accent); font-weight:800}
+table.staffel tr.now td{color:var(--accentTxt); font-weight:800}
 
 /* ---------- DXF-Vorschau ---------- */
 .dxfwrap{display:grid; grid-template-columns:1fr; gap:10px}
@@ -306,7 +332,7 @@ table.staffel tr.now td{color:var(--accent); font-weight:800}
 .sheet h2{margin:0 0 12px; font-size:18px; font-weight:800}
 .sheet .sheetfoot{display:flex; gap:10px; margin-top:14px; position:sticky; bottom:0;
   background:var(--bg2); padding-top:10px}
-.sheet .sheetfoot .btn{flex:1}
+.sheet .sheetfoot .btn{flex:1; min-height:var(--tap-min)}
 
 #toasts{position:fixed; left:12px; right:12px; bottom:calc(90px + env(safe-area-inset-bottom)); z-index:70;
   display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none}
@@ -320,13 +346,13 @@ table.staffel tr.now td{color:var(--accent); font-weight:800}
 .searchbar input{flex:1}
 .chips{display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px}
 .chip{border:1px solid var(--line); background:var(--card2); color:var(--muted); border-radius:20px;
-  padding:8px 13px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; min-height:40px}
+  padding:8px 13px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; min-height:var(--tap-min)}
 .chip.on{background:var(--accent); color:var(--accentInk); border-color:var(--accent)}
 
 .subrow{display:flex; gap:8px; align-items:flex-end}
 .subrow>*{flex:1; min-width:0}
 .subrow>.narrow{flex:0 0 96px}
-.subrow>.iconbtn{flex:0 0 40px; margin-bottom:10px}
+.subrow>.iconbtn{flex:0 0 var(--tap-min); margin-bottom:10px}
 
 .posrow{background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:11px; margin-bottom:9px}
 .posrow .ph{display:flex; align-items:center; gap:8px; margin-bottom:8px}
@@ -342,4 +368,4 @@ table.staffel tr.now td{color:var(--accent); font-weight:800}
 .badge{display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.5px;
   padding:2px 6px; border-radius:5px; margin-left:6px; vertical-align:middle}
 .badge.auto{background:rgba(74,168,255,.18); color:var(--blue)}
-.badge.man{background:rgba(255,147,48,.18); color:var(--accent)}
+.badge.man{background:rgba(255,147,48,.18); color:var(--accentTxt)}

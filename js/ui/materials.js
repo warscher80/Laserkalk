@@ -124,13 +124,16 @@ function liste(ctx) {
     // 412-px-Handy die Beschriftungen ab.
     filterBox.appendChild(h('.grid', null,
       select([['', 'Alle Gruppen'], ...gruppen.map(g => [g.id, g.name])], filter.groupId,
-        v => { filter.groupId = v; filter.werkstoff = ''; filter.dicke = ''; zeichneFilter(); zeichne(); }),
+        v => { filter.groupId = v; filter.werkstoff = ''; filter.dicke = ''; zeichneFilter(); zeichne(); },
+        { 'aria-label': 'Nach Materialgruppe filtern' }),
       select([['', 'Alle Werkstoffe'], ...werkstoffe.map(w => [w, w])], filter.werkstoff,
-        v => { filter.werkstoff = v; filter.dicke = ''; zeichneFilter(); zeichne(); }),
+        v => { filter.werkstoff = v; filter.dicke = ''; zeichneFilter(); zeichne(); },
+        { 'aria-label': 'Nach Werkstoff filtern' }),
       select([['', 'Alle Stärken'], ...dicken.map(d => [d, String(d).replace('.', ',') + ' mm'])], filter.dicke,
-        v => { filter.dicke = v; zeichne(); }),
+        v => { filter.dicke = v; zeichne(); }, { 'aria-label': 'Nach Blechstärke filtern' }),
       lieferanten.length
-        ? select([['', 'Alle Lieferanten'], ...lieferanten.map(x => [x, x])], filter.lieferant, v => { filter.lieferant = v; zeichne(); })
+        ? select([['', 'Alle Lieferanten'], ...lieferanten.map(x => [x, x])], filter.lieferant,
+            v => { filter.lieferant = v; zeichne(); }, { 'aria-label': 'Nach Lieferant filtern' })
         : null,
     ));
     filterBox.appendChild(h('.chips', null,
@@ -147,7 +150,8 @@ function liste(ctx) {
   };
 
   const sucheInput = h('input', {
-    type: 'search', placeholder: 'Suchen: Werkstoff, Lieferant, Artikelnummer …', value: filter.suche,
+    type: 'search', 'aria-label': 'Materialien durchsuchen',
+    placeholder: 'Suchen: Werkstoff, Lieferant, Artikelnummer …', value: filter.suche,
     oninput: entprellt(e => { filter.suche = e.target.value; zeichne(); }, 140),
   });
 

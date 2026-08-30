@@ -65,12 +65,22 @@ function preisleisteEl() { return preisEl || (preisEl = document.getElementById(
 export function zeigePreis(d) {
   const el = leere(preisleisteEl());
   document.body.classList.add('haspricebar');
-  el.appendChild(h('.pb.main', null,
-    h('.pl', { text: 'Gesamt netto' }),
-    h('.pv', { text: eur(d.nettoCent) })));
-  el.appendChild(h('.pb', null,
-    h('.pl', { text: `Preis/Stück (${d.stueckzahl})` }),
-    h('.pv', { text: eur(d.proStueckCent) })));
+  el.classList.toggle('unsicher', !!d.unsicher);
+
+  if (d.unsicher) {
+    // Kein belastbarer Preis: die Zahlen werden bewusst NICHT gezeigt, damit
+    // niemand sie versehentlich an einen Kunden weitergibt.
+    el.appendChild(h('.pb.main', null,
+      h('.pl', { text: 'Preis nicht verlässlich' }),
+      h('.pv', { text: d.unsicherGrund || 'Eingangsdaten ungeklärt' })));
+  } else {
+    el.appendChild(h('.pb.main', null,
+      h('.pl', { text: 'Gesamt netto' }),
+      h('.pv', { text: eur(d.nettoCent) })));
+    el.appendChild(h('.pb', null,
+      h('.pl', { text: `Preis/Stück (${d.stueckzahl})` }),
+      h('.pv', { text: eur(d.proStueckCent) })));
+  }
   if (d.aktion) {
     el.appendChild(h('button.btn.primary.pbtn', { text: d.aktion.label, onclick: d.aktion.onclick }));
   }
@@ -294,6 +304,7 @@ export async function start() {
 
   farbschemaAnwenden(store.settings.theme);
 
+  tastaturHilfe();
   window.addEventListener('hashchange', zeichne);
   await zeichne();
 
@@ -340,3 +351,44 @@ export async function setzeTheme(theme) {
   await store.setSettings({ theme });
   farbschemaAnwenden(theme);
 }
+
+/**
+ * Tastatur-Hilfe: Auf dem Handy schiebt die eingeblendete Tastatur ein Feld
+ * gern hinter die feste Preisleiste am unteren Rand — man tippt dann blind.
+ * Deshalb nach dem Anfassen eines Feldes prüfen, ob es noch im sichtbaren
+ * Bereich liegt, und es andernfalls in die Mitte scrollen.
+ *
+ * Gemessen wird mit visualViewport (kennt die Tastatur); fehlt das, dient
+ * die Fensterhöhe als Rückfallebene.
+ */
+function tastaturHilfe() {
+  const sichtbareHoehe = () =>
+    (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+
+  const pruefe = (el) => {
+    if (!el || !el.getBoundingClientRect) return;
+    const bar = document.getElementById('pricebar');
+    const barHoehe = bar && getComputedStyle(bar).display !== 'none' ? bar.offsetHeight : 0;
+    const r = el.getBoundingClientRect();
+    const unten = sichtbareHoehe() - barHoehe - 8;
+    if (r.bottom > unten || r.top < 8) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  };
+
+  document.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if (!el || !/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return;
+    // Zweimal nachsehen: einmal sofort, einmal wenn die Tastatur oben ist.
+    pruefe(el);
+    setTimeout(() => pruefe(el), 350);
+  });
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+      const el = document.activeElement;
+      if (el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) pruefe(el);
+    });
+  }
+}
+

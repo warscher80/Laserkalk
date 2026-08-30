@@ -10,13 +10,14 @@
  *   - Kalkulationen: CSV (Übersicht) – für Auswertungen in Excel
  */
 
-import { STORES } from '../core/db.js';
+import { STORES, DB_VERSION } from '../core/db.js';
 import { materialAbleiten } from '../core/material.js';
 import { berechne } from '../calc/engine.js';
 import { centStr, toCent, parseNum } from '../core/money.js';
 import { dateDe, isoDate, stampDe } from '../core/util.js';
 
 export const BACKUP_FORMAT = 'laserkalk-backup';
+/** Format der Backup-Hülle (Kopf, Prüfsumme). */
 export const BACKUP_VERSION = 1;
 
 /* ------------------------------------------------------------------ */
@@ -47,6 +48,7 @@ export function baueBackup(daten, stores = STORES) {
   return JSON.stringify({
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
+    schemaVersion: DB_VERSION,          // Aufbau der Datenbank, für Migrationen
     erstellt: new Date().toISOString(),
     stores,
     pruefsumme: pruefsumme(body),
@@ -81,6 +83,18 @@ export function leseBackup(text) {
   const unbekannt = Object.keys(obj.daten).filter(k => !STORES.includes(k));
   if (unbekannt.length) warnungen.push(`Unbekannte Bereiche im Backup werden übersprungen: ${unbekannt.join(', ')}.`);
 
+  const schema = Number(obj.schemaVersion);
+  if (Number.isFinite(schema) && schema > DB_VERSION) {
+    return {
+      ok: false,
+      fehler: `Das Backup stammt aus einem neueren Datenbankstand (${schema} statt ${DB_VERSION}). Bitte zuerst die App aktualisieren.`,
+      warnungen,
+    };
+  }
+  if (Number.isFinite(schema) && schema < DB_VERSION) {
+    warnungen.push(`Das Backup stammt aus Datenbankstand ${schema}; es wird auf Stand ${DB_VERSION} übernommen.`);
+  }
+
   const daten = {};
   for (const s of STORES) {
     const arr = obj.daten[s];
@@ -90,6 +104,106 @@ export function leseBackup(text) {
     daten[s] = gueltig;
   }
   return { ok: true, warnungen, daten, kopf: { erstellt: obj.erstellt, version: obj.version, anzahl: obj.anzahl } };
+}
+
+/* ------------------------------------------------------------------ */
+/* Inhaltliche Prüfung vor dem Einspielen                              */
+/* ------------------------------------------------------------------ */
+
+const ZAHL = (v) => Number.isFinite(Number(v));
+const GANZ_NICHT_NEGATIV = (v) => Number.isInteger(Number(v)) && Number(v) >= 0;
+
+/**
+ * Regeln je Bereich. Rückgabe: Fehlertext oder null.
+ * Bewusst streng bei allem, was in eine Rechnung eingeht — ein Backup mit
+ * NaN im Preisfeld würde sonst still falsche Angebote erzeugen.
+ */
+const REGELN = {
+  settings: (o) => {
+    for (const f of ['laserSatzCent', 'cadSatzCent', 'bedienerSatzCent', 'entgratSatzCent', 'mindestwertCent']) {
+      if (o[f] !== undefined && !GANZ_NICHT_NEGATIV(o[f])) return `Einstellung "${f}" ist kein gültiger Cent-Betrag`;
+    }
+    for (const f of ['materialAufschlagBp', 'verschnittBp', 'gewinnBp', 'mwstBp']) {
+      if (o[f] !== undefined && !GANZ_NICHT_NEGATIV(o[f])) return `Einstellung "${f}" ist kein gültiger Prozentwert`;
+    }
+    return null;
+  },
+  materialGroups: (o) => (!o.name ? 'Materialgruppe ohne Namen'
+    : !(Number(o.dichteStd) > 0) ? `Materialgruppe "${o.name}" hat keine gültige Dichte` : null),
+  materials: (o) => {
+    if (!o.werkstoff) return 'Blech ohne Werkstoff';
+    if (!(Number(o.dickeMm) > 0)) return `Blech "${o.werkstoff}" hat keine gültige Blechstärke`;
+    if (!(Number(o.dichte) > 0)) return `Blech "${o.werkstoff}" hat keine gültige Dichte`;
+    for (const f of ['ekTafelCent', 'ekProKgCent', 'preisProM2Cent']) {
+      if (o[f] !== undefined && !GANZ_NICHT_NEGATIV(o[f])) return `Blech "${o.werkstoff}": "${f}" ist kein gültiger Cent-Betrag`;
+    }
+    for (const f of ['tafelLaengeMm', 'tafelBreiteMm']) {
+      if (o[f] !== undefined && (!ZAHL(o[f]) || Number(o[f]) < 0)) return `Blech "${o.werkstoff}": "${f}" ist ungültig`;
+    }
+    return null;
+  },
+  cutParams: (o) => (!(Number(o.dickeMm) > 0) ? 'Schnittparameter ohne gültige Blechstärke'
+    : !(Number(o.vSchnittMmMin) > 0) ? `Schnittparameter "${o.werkstoff || '?'}" ohne gültige Schnittgeschwindigkeit`
+    : !ZAHL(o.piercingSek) || Number(o.piercingSek) < 0 ? `Schnittparameter "${o.werkstoff || '?'}" mit ungültiger Einstichzeit` : null),
+  processes: (o) => (!o.name ? 'Bearbeitungsart ohne Namen'
+    : !GANZ_NICHT_NEGATIV(o.satzCent) ? `Bearbeitungsart "${o.name}" hat keinen gültigen Stundensatz` : null),
+  gases: (o) => (!o.name ? 'Gas ohne Namen'
+    : !['inklusive', 'proStunde', 'proMinute', 'pauschal'].includes(o.modus) ? `Gas "${o.name}" hat eine unbekannte Abrechnungsart`
+    : !GANZ_NICHT_NEGATIV(o.preisCent) ? `Gas "${o.name}" hat keinen gültigen Preis` : null),
+  machines: (o) => (!o.name ? 'Maschine ohne Namen' : null),
+  calculations: (o) => {
+    const n = Number(o.stueckzahl);
+    if (!Number.isFinite(n) || n < 1) return `Kalkulation "${o.nummer || o.id}" hat keine gültige Stückzahl`;
+    for (const f of ['verschnittBp', 'materialAufschlagBp', 'gewinnBp', 'mwstBp']) {
+      if (o[f] !== undefined && !GANZ_NICHT_NEGATIV(o[f])) return `Kalkulation "${o.nummer || o.id}": "${f}" ist ungültig`;
+    }
+    return null;
+  },
+};
+
+/**
+ * Prüft den Inhalt eines gelesenen Backups VOLLSTÄNDIG, bevor irgendetwas
+ * geschrieben wird. Erst wenn hier nichts blockiert, darf eingespielt werden.
+ *
+ * @returns {{ok:boolean, fehler:string[], warnungen:string[], daten:Object, anzahl:Object}}
+ */
+export function validiereDaten(daten) {
+  const fehler = [];
+  const warnungen = [];
+  const sauber = {};
+  const anzahl = {};
+
+  for (const bereich of STORES) {
+    const arr = daten[bereich];
+    if (!Array.isArray(arr)) continue;
+    const regel = REGELN[bereich];
+    const gesehen = new Set();
+    const behalten = [];
+
+    for (const o of arr) {
+      if (!o || typeof o !== 'object' || typeof o.id !== 'string' || !o.id) {
+        warnungen.push(`${bereich}: ein Eintrag ohne gültige Kennung wurde übersprungen.`);
+        continue;
+      }
+      if (gesehen.has(o.id)) {
+        // Doppelte Kennung im Backup: der spätere Eintrag gewinnt, wie beim Schreiben.
+        warnungen.push(`${bereich}: Kennung "${o.id}" kommt mehrfach vor – der letzte Eintrag wird verwendet.`);
+        const i = behalten.findIndex(x => x.id === o.id);
+        if (i >= 0) behalten.splice(i, 1);
+      }
+      gesehen.add(o.id);
+      const problem = regel ? regel(o) : null;
+      if (problem) { fehler.push(`${bereich}: ${problem}.`); continue; }
+      behalten.push(o);
+    }
+    sauber[bereich] = behalten;
+    anzahl[bereich] = behalten.length;
+  }
+
+  if (!Object.values(anzahl).some(n => n > 0) && !fehler.length) {
+    fehler.push('Das Backup enthält keine übernehmbaren Daten.');
+  }
+  return { ok: fehler.length === 0, fehler, warnungen, daten: sauber, anzahl };
 }
 
 /* ------------------------------------------------------------------ */

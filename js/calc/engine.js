@@ -9,7 +9,7 @@
  * Alle Beträge sind ganze Cent, alle Prozente Basispunkte (§42).
  */
 
-import { pctOf, costFromMinutes, costFromQty, divCent, roundHalf } from '../core/money.js';
+import { pctOf, costFromMinutes, costFromQty, divCent, roundHalf, glatt } from '../core/money.js';
 import { flaechengewichtKgProM2, tafelFlaecheM2 } from '../core/material.js';
 
 /* ------------------------------------------------------------------ */
@@ -69,7 +69,7 @@ export const DXF_BASIS = {
   bbox:    'Umschließendes Rechteck (Bounding Box)',
   manuell: 'Manuelle Materialfläche',
   tafel:   'Komplette Tafel',
-  nesting: 'Nesting-Ergebnis',
+  nesting: 'Rechteck-Nesting (Bounding Box, 0°/90°)',
 };
 
 /**
@@ -129,7 +129,7 @@ export function berechneMaterialBasis(calc) {
       warnungen.push('Für dieses Material ist kein Preis je m² hinterlegt – die Materialkosten sind 0 €. Bitte Einkaufspreis im Material pflegen.');
       ekCent = 0;
     } else {
-      const gesamtFlaeche = proStueck ? flaecheM2 * n : flaecheM2;
+      const gesamtFlaeche = glatt(proStueck ? flaecheM2 * n : flaecheM2);
       ekCent = roundHalf(gesamtFlaeche * preisM2);
     }
     basisText = text;
@@ -162,7 +162,7 @@ export function berechneMaterialBasis(calc) {
         warnungen.push('Für dieses Material ist kein Preis je kg hinterlegt – die Materialkosten sind 0 €.');
         ekCent = 0;
       } else {
-        const gesamtKg = proStueck ? gewichtEinzelKg * n : gewichtEinzelKg;
+        const gesamtKg = glatt(proStueck ? gewichtEinzelKg * n : gewichtEinzelKg);
         ekCent = roundHalf(gesamtKg * preisKg);
       }
       basisText = `${fmtNum(gewichtEinzelKg, 3)} kg`;
@@ -178,7 +178,7 @@ export function berechneMaterialBasis(calc) {
         warnungen.push('Für dieses Material ist kein Tafelpreis hinterlegt – die Materialkosten sind 0 €.');
         ekCent = 0;
       } else {
-        ekCent = roundHalf((proStueck ? t * n : t) * preisTafel);
+        ekCent = roundHalf(glatt(proStueck ? t * n : t) * preisTafel);
       }
       basisText = `${fmtNum(t, 2)} Tafel(n)`;
       break;
@@ -258,7 +258,7 @@ export function berechne(calc) {
     const min = Math.max(0, Number(z.minuten) || 0);
     const satz = Math.max(0, Math.trunc(Number(z.satzCent) || 0));
     const modus = z.modus || 'proStueck';
-    const minutenGesamt = modus === 'proStueck' ? min * n : min;
+    const minutenGesamt = glatt(modus === 'proStueck' ? min * n : min);
     const kostenCent = costFromMinutes(minutenGesamt, satz);
     const row = {
       art: z.art, name: z.name || z.art, quelle: z.quelle || 'manuell',
@@ -266,7 +266,7 @@ export function berechne(calc) {
     };
     zeiten.push(row);
     zeitenSummeCent += kostenCent;
-    if (z.art === 'laser') laserMinutenGesamt += minutenGesamt;
+    if (z.art === 'laser') laserMinutenGesamt = glatt(laserMinutenGesamt + minutenGesamt);
     if (kostenCent > 0 || min > 0) {
       positionen.push({
         gruppe: gruppeVonArt(z.art),
@@ -304,7 +304,7 @@ export function berechne(calc) {
     const menge = Number(z.menge) || 0;
     const einzel = Math.trunc(Number(z.einzelpreisCent) || 0);
     const modus = z.modus || 'einmalig';
-    const mengeGesamt = modus === 'proStueck' ? menge * n : menge;
+    const mengeGesamt = glatt(modus === 'proStueck' ? menge * n : menge);
     const kostenCent = costFromQty(mengeGesamt, einzel);
     zusatz.push({ bezeichnung: z.bezeichnung || 'Position', menge, mengeGesamt, einheit: z.einheit || 'Stk', einzelpreisCent: einzel, modus, kostenCent });
     zusatzSummeCent += kostenCent;
@@ -350,7 +350,46 @@ export function berechne(calc) {
     warnungen.push('Es ist kein Material gewählt – die Materialkosten sind 0 €.');
   }
 
+  /* --- Verlässlichkeit des Ergebnisses ---
+     Ein Preis, der auf ungeklärten Eingangsdaten beruht, darf nicht wie ein
+     belastbarer Preis aussehen. Die Oberfläche zeigt ihn dann gesperrt an. */
+  const unsicherheiten = [];
+  const d = calc.dxf;
+  if (d) {
+    if (d.einheitUnsicher && !d.einheitBestaetigt) {
+      unsicherheiten.push({
+        schwere: 'blockierend',
+        text: 'Die Einheit der DXF-Datei ist nicht bestätigt. Alle Maße, Flächen und damit der gesamte Preis können um den Faktor 10, 25,4 oder 1000 danebenliegen.',
+      });
+    }
+    const nutztDxfFlaeche = matBasis.methode === 'dxf' && (d.flaechenBasis || 'netto') === 'netto';
+    if (d.flaecheUnsicher && nutztDxfFlaeche) {
+      unsicherheiten.push({
+        schwere: 'hoch',
+        text: 'Die Nettofläche stammt aus einer Zeichnung mit offenen Konturen und ist deshalb unsicher. Material und Gewicht können erheblich abweichen.',
+      });
+    }
+  }
+  /*
+   * Eine Zeichnung, aus der keine Fläche herauskommt (leer, beschädigt, nur
+   * offene Linien, falsche Flächenbasis), führt sonst zu 0 € Material und
+   * damit zu einem Preis, der viel zu niedrig und trotzdem selbstbewusst
+   * aussieht. Das ist der gefährlichste Fall überhaupt — deshalb blockierend.
+   */
+  if (matBasis.methode === 'dxf' && !(matBasis.flaecheEinzelM2 > 0)) {
+    unsicherheiten.push({
+      schwere: 'blockierend',
+      text: 'Aus der Zeichnung ergibt sich keine Materialfläche. Der Materialpreis wäre 0 € und der Gesamtpreis damit falsch. ' +
+        'Bitte die Zeichnung prüfen, eine andere Flächenbasis wählen oder die Fläche von Hand eintragen.',
+    });
+  }
+
+  const blockierend = unsicherheiten.some(u => u.schwere === 'blockierend');
+
   return {
+    unsicherheiten,
+    /** true = der Preis darf NICHT als verlässlich dargestellt werden */
+    preisUnsicher: blockierend,
     stueckzahl: n,
     material, zeiten, zeitenSummeCent, gas, zusatz, zusatzSummeCent,
     laserMinutenGesamt,

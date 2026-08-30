@@ -6,7 +6,10 @@
  * Oberfläche kennt nur dieses Modul, nie IndexedDB.
  */
 
-import { openDatabase, mirrorToLocalStorage, readLocalMirror, STORES, MemoryAdapter } from './db.js';
+import {
+  openDatabase, mirrorToLocalStorage, readLocalMirror, speicherStatus,
+  STORES, DB_VERSION, MemoryAdapter,
+} from './db.js';
 import {
   defaultSettings, defaultMaterialGroups, defaultProcesses, defaultGases,
   defaultMachines, defaultCutParams, SETTINGS_ID,
@@ -27,6 +30,8 @@ class Store {
 
   async init() {
     this.adapter = await openDatabase();
+    // Dauerhaften Speicher anfordern, bevor Daten geschrieben werden.
+    this.speicher = await speicherStatus(true);
     if (this.adapter.kind === 'memory') {
       this.hinweise.push('Achtung: Der Gerätespeicher ist nicht verfügbar. Daten gehen beim Schließen der App verloren. Bitte den Privatmodus verlassen oder Speicherzugriff erlauben.');
     }
@@ -242,7 +247,89 @@ class Store {
   /* ---------- Restbleche (§33, vorbereitet) ---------- */
 
   restbleche() { return this.all('remnants'); }
+
+  /* ---------- Sicherung und Wiederherstellung ---------- */
+
+  /** Aktueller Speicherzustand; wird beim Start ermittelt. */
+  async speicherPruefen(anfordern = false) {
+    this.speicher = await speicherStatus(anfordern);
+    return this.speicher;
+  }
+
+  /** Vollständiger Abzug des aktuellen Bestands. */
+  abzug(stores = STORES) {
+    const daten = {};
+    for (const s of stores) daten[s] = JSON.parse(JSON.stringify(this.all(s)));
+    return daten;
+  }
+
+  /**
+   * Legt VOR einem Restore eine Sicherheitskopie des aktuellen Zustands an.
+   * Sie liegt in localStorage und lässt sich über die Einstellungen zurückholen,
+   * falls das eingespielte Backup doch nicht das gewünschte war.
+   */
+  sicherheitskopieAnlegen() {
+    const inhalt = {
+      v: DB_VERSION, ts: Date.now(), grund: 'vor Wiederherstellung',
+      daten: this.abzug(),
+    };
+    try {
+      localStorage.setItem(SICHERUNG_KEY, JSON.stringify(inhalt));
+      return { ok: true, ts: inhalt.ts };
+    } catch (e) {
+      // Kontingent voll o. ä. – der Restore darf trotzdem laufen, aber der
+      // Benutzer muss wissen, dass es kein Netz darunter gibt.
+      return { ok: false, fehler: 'Die Sicherheitskopie konnte nicht angelegt werden: ' + (e.message || e) };
+    }
+  }
+
+  /** Liest die Sicherheitskopie, falls vorhanden. */
+  sicherheitskopie() {
+    try {
+      const roh = localStorage.getItem(SICHERUNG_KEY);
+      if (!roh) return null;
+      const o = JSON.parse(roh);
+      return o && o.daten ? o : null;
+    } catch { return null; }
+  }
+
+  /**
+   * Spielt geprüfte Daten ein.
+   *
+   * Ablauf: Sicherheitskopie -> EINE Transaktion über alle betroffenen Bereiche
+   * -> Cache neu laden. Schlägt das Schreiben fehl, macht die Datenbank alles
+   * rückgängig; es bleibt nie ein halb eingespielter Zustand zurück.
+   *
+   * @param {Object} daten   { storeName: [...] } – muss bereits validiert sein
+   * @param {'ersetzen'|'hinzufuegen'} modus
+   */
+  async wiederherstellen(daten, modus = 'ersetzen') {
+    // Ein Aufruf ohne bekannte Bereiche würde sonst „erfolgreich 0 Datensätze"
+    // melden — der Benutzer glaubte, die Sicherung sei eingespielt.
+    const bekannt = daten && typeof daten === 'object'
+      ? Object.keys(daten).filter(n => STORES.includes(n) && Array.isArray(daten[n]))
+      : [];
+    if (!bekannt.length) {
+      return { ok: false, fehler: 'Das Backup enthält keine übernehmbaren Daten. Es wurde nichts verändert.', sicherung: null };
+    }
+    const sicherung = this.sicherheitskopieAnlegen();
+    let anzahl = 0;
+    try {
+      anzahl = await this.adapter.replaceAll(daten, modus === 'ersetzen');
+    } catch (e) {
+      // Die Datenbank hat zurückgerollt – der Cache ist noch der alte Stand.
+      return { ok: false, fehler: 'Das Einspielen ist fehlgeschlagen, es wurde nichts verändert: ' + (e.message || e), sicherung };
+    }
+    for (const s of STORES) this.cache[s] = await this.adapter.all(s);
+    // Fehlen die Einstellungen im Backup, dürfen sie nicht leer bleiben.
+    if (!this.settings) await this.erstbefuellung(true);
+    this._spiegeln();
+    for (const s of Object.keys(daten)) this._melde(s);
+    return { ok: true, anzahl, sicherung };
+  }
 }
+
+const SICHERUNG_KEY = 'laserkalk_sicherung_vor_restore';
 
 export const store = new Store();
 export { MemoryAdapter };
