@@ -1,0 +1,12 @@
+{
+  "name": "laserkalk",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LaserKalk – Kalkulation für Laserschneiden und Blechteile",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "start": "http-server www -p 4611 -c-1",
+    "icons": "node icon-gen.js"
+  }
+}

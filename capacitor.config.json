@@ -1,0 +1,8 @@
+{
+	"appId": "at.warscher.laserkalk",
+	"appName": "LaserKalk",
+	"webDir": "laserkalk/www",
+	"android": {
+		"allowMixedContent": false
+	}
+}
