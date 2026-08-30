@@ -120,7 +120,9 @@ function liste(ctx) {
       .map(m => String(m.dickeMm)))].sort((a, b) => Number(a) - Number(b));
     const lieferanten = store.lieferanten();
 
-    filterBox.appendChild(h('.grid' + (lieferanten.length ? '' : '.g3'), null,
+    // Immer zweispaltig: drei Auswahlfelder nebeneinander schneiden auf einem
+    // 412-px-Handy die Beschriftungen ab.
+    filterBox.appendChild(h('.grid', null,
       select([['', 'Alle Gruppen'], ...gruppen.map(g => [g.id, g.name])], filter.groupId,
         v => { filter.groupId = v; filter.werkstoff = ''; filter.dicke = ''; zeichneFilter(); zeichne(); }),
       select([['', 'Alle Werkstoffe'], ...werkstoffe.map(w => [w, w])], filter.werkstoff,

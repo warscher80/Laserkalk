@@ -247,7 +247,13 @@ STARTSEITE (6 große Kacheln)
 - Immer sichtbare **Preisleiste** am unteren Rand: `GESAMT NETTO` und `PREIS/STÜCK`,
   live bei jeder Eingabe (§2, §40).
 - Touch-Ziele ≥ 48 px, Eingabefelder 16 px Schriftgröße (verhindert iOS-Zoom),
-  `inputmode="decimal"` für Zifferntastatur, Dark- und Light-Mode.
+  `inputmode="decimal"` für Zifferntastatur.
+- **Heller Hintergrund ist der Standard**, Dunkelmodus umschaltbar unter
+  Einstellungen → Darstellung. Die Wahl wird zusätzlich in `localStorage`
+  gespiegelt und in einem Inline-Skript im `<head>` angewendet, damit beim Start
+  nicht kurz das falsche Schema aufblitzt. Die DXF-Vorschau liest ihre Farben
+  aus den CSS-Variablen — fest verdrahtete Farben wären in einem der beiden
+  Schemata unsichtbar.
 - Ab 900 px Breite zweispaltig (Tablet/PC), sonst einspaltig.
 
 ---

@@ -134,10 +134,7 @@ export async function start() {
     return;
   }
 
-  const s = store.settings;
-  document.body.classList.toggle('light', s.theme === 'light');
-  const meta = document.querySelector('meta[name=theme-color]');
-  if (meta) meta.setAttribute('content', s.theme === 'light' ? '#e4eaf1' : '#141c24');
+  farbschemaAnwenden(store.settings.theme);
 
   window.addEventListener('hashchange', zeichne);
   await zeichne();
@@ -166,10 +163,18 @@ export async function start() {
   }
 }
 
+/** Setzt das Farbschema und spiegelt die Wahl für den nächsten Start. */
+function farbschemaAnwenden(theme) {
+  const hell = theme === 'light';
+  document.body.classList.toggle('light', hell);
+  document.documentElement.classList.toggle('vorab-hell', hell);
+  const meta = document.querySelector('meta[name=theme-color]');
+  if (meta) meta.setAttribute('content', hell ? '#e4eaf1' : '#141c24');
+  try { localStorage.setItem('laserkalk_theme', hell ? 'light' : 'dark'); } catch { /* egal */ }
+}
+
 /** Theme umschalten (aus den Einstellungen). */
 export async function setzeTheme(theme) {
   await store.setSettings({ theme });
-  document.body.classList.toggle('light', theme === 'light');
-  const meta = document.querySelector('meta[name=theme-color]');
-  if (meta) meta.setAttribute('content', theme === 'light' ? '#e4eaf1' : '#141c24');
+  farbschemaAnwenden(theme);
 }

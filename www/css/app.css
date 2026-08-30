@@ -21,6 +21,8 @@ body.light{
   --sh:0 6px 18px rgba(20,40,60,.12);
 }
 
+/* Verhindert das kurze Aufblitzen des dunklen Grundes vor dem ersten Zeichnen. */
+html.vorab-hell{background:#eef2f6}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 /* Muss die display-Regeln der Komponenten schlagen (z. B. .btn{display:inline-flex}),
    sonst bleibt ein per el.hidden ausgeblendetes Element sichtbar. */
@@ -79,9 +81,11 @@ body.haspricebar main{padding-bottom:calc(118px + env(safe-area-inset-bottom))}
 /* ---------- Formularelemente ---------- */
 .field{margin-bottom:10px; min-width:0}
 .field>label{display:block; font-size:12px; color:var(--muted); margin:0 0 5px 2px; font-weight:700}
-.field .hint{font-size:11.5px; color:var(--muted2); margin:4px 2px 0}
-.field .hint.warn{color:var(--warn)}
-.field .hint.bad{color:var(--bad)}
+/* Hinweistext – gilt auch frei stehend in einer Karte, nicht nur unter einem Feld. */
+.hint{font-size:11.5px; color:var(--muted2); margin:4px 2px 0; line-height:1.45}
+.hint.warn{color:var(--warn)}
+.hint.bad{color:var(--bad)}
+.hint.ok{color:var(--ok)}
 
 input,select,textarea{
   width:100%; background:var(--card2); color:var(--txt);

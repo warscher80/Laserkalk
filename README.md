@@ -4,6 +4,7 @@ Kalkulations-App für **Laserschneiden und Blechteile** in einem Metallbaubetrie
 Material · DXF-Auswertung · Zeiten · nachvollziehbarer Verkaufspreis.
 
 Vollständig offline, ohne Backend, ohne Tracking, ohne Berechtigungen.
+Heller Hintergrund als Standard, Dunkelmodus unter Einstellungen → Darstellung.
 Sprache: Deutsch. Alle Preise und Sätze werden vom Betrieb selbst gepflegt.
 
 > Das technische Konzept — Datenmodell, DXF-Verfahren, bekannte Grenzen —

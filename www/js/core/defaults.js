@@ -52,7 +52,7 @@ export function defaultSettings() {
 
     /* --- Sonstiges --- */
     waehrung: 'EUR',
-    theme: 'dark',
+    theme: 'light',
     nummernPraefix: 'K',
     nummernZaehler: 1,
     schemaVersion: 1,

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#141c24">
+<meta name="theme-color" content="#e4eaf1">
 <meta name="description" content="Kalkulation für Laserschneiden und Blechteile – Material, DXF, Zeiten, Verkaufspreis.">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -13,6 +13,22 @@
 <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <link rel="stylesheet" href="./css/app.css">
+<script>
+  /* Farbschema VOR dem ersten Zeichnen setzen. Die Einstellung liegt in der
+     Datenbank, die nur asynchron lesbar ist – deshalb wird die Wahl zusätzlich
+     in localStorage gespiegelt. Sonst blitzt beim Start kurz das falsche
+     Schema auf. Standard ist hell. */
+  (function () {
+    var t = 'light';
+    try { t = localStorage.getItem('laserkalk_theme') || 'light'; } catch (e) {}
+    if (t === 'light') document.documentElement.classList.add('vorab-hell');
+    document.addEventListener('DOMContentLoaded', function () {
+      if (t === 'light') document.body.classList.add('light');
+    });
+    var m = document.querySelector('meta[name=theme-color]');
+    if (m) m.setAttribute('content', t === 'light' ? '#e4eaf1' : '#141c24');
+  })();
+</script>
 </head>
 <body>
 

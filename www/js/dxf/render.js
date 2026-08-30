@@ -6,14 +6,25 @@
  * (rot, weil fehlerhaft), Bounding Box und Abmessungen.
  */
 
-const FARBEN = {
-  aussen: '#ff8a3d',
-  loch: '#4aa8ff',
-  insel: '#3ddc84',
-  offen: '#ff5d5d',
-  bbox: 'rgba(255,255,255,.28)',
-  text: 'rgba(255,255,255,.7)',
-};
+/**
+ * Die Zeichenfarben kommen aus den CSS-Variablen des aktuellen Farbschemas.
+ * Fest verdrahtete Farben wären im Hellmodus unsichtbar (weiße Maßschrift auf
+ * hellem Grund), deshalb wird bei jedem Zeichnen neu ausgelesen.
+ */
+function farben() {
+  const stil = getComputedStyle(document.body);
+  const v = (name, ersatz) => (stil.getPropertyValue(name) || '').trim() || ersatz;
+  const hell = document.body.classList.contains('light');
+  return {
+    aussen: v('--accent', '#ff9330'),
+    loch: v('--blue', '#4aa8ff'),
+    insel: v('--ok', '#3ddc84'),
+    offen: v('--bad', '#ff5f5f'),
+    fuellung: hell ? 'rgba(226,112,10,.13)' : 'rgba(255,147,48,.13)',
+    bbox: hell ? 'rgba(22,32,42,.30)' : 'rgba(255,255,255,.28)',
+    text: v('--muted', hell ? '#5a6b7c' : '#93a3b3'),
+  };
+}
 
 /**
  * @param {HTMLCanvasElement} canvas
@@ -31,6 +42,7 @@ export function zeichne(canvas, analyse, opts = {}) {
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
+  const FARBEN = farben();
 
   if (!analyse || !analyse.bbox || !(analyse.bbox.breite > 0 || analyse.bbox.hoehe > 0)) {
     ctx.fillStyle = FARBEN.text;
@@ -73,7 +85,7 @@ export function zeichne(canvas, analyse, opts = {}) {
   // Pfad; mit der Even-Odd-Regel stanzt das die Löcher korrekt aus und Inseln
   // in Löchern werden wieder gefüllt.
   ctx.save();
-  ctx.fillStyle = 'rgba(255,138,61,.13)';
+  ctx.fillStyle = FARBEN.fuellung;
   ctx.beginPath();
   for (const k of analyse.konturen) {
     ctx.moveTo(X(k.pts[0][0]), Y(k.pts[0][1]));
