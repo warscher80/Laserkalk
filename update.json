@@ -1,8 +1,8 @@
 {
   "_hinweis": "Update-Prüfung für LaserKalk. Liegt unter https://warscher80.github.io/Laserkalk/update.json und wird von der App abgefragt. Bei jeder neuen Version hier versionCode, versionName, apkUrl und hinweise anpassen.",
-  "versionCode": 6,
-  "versionName": "1.0.5",
-  "apkUrl": "https://warscher80.github.io/Laserkalk/LaserKalk-1.0.5.apk",
-  "hinweise": "Ungültige Eingaben werden nicht mehr stillschweigend ersetzt: fehlerhafte Felder werden benannt, das Ergebnis bleibt gesperrt. Alle Felder sind jetzt sauber beschriftet.",
+  "versionCode": 7,
+  "versionName": "1.1.0",
+  "apkUrl": "https://warscher80.github.io/Laserkalk/LaserKalk-1.1.0.apk",
+  "hinweise": "WICHTIG: Diese Fassung ist erstmals richtig signiert und laesst sich deshalb NICHT ueber die bestehende App installieren. Vorgehen: 1. In der App unter Einstellungen - Backup ein Vollbackup speichern. 2. Alte App deinstallieren. 3. Diese Fassung installieren. 4. Backup wieder einspielen. Ab jetzt laufen kuenftige Updates wieder ganz normal drueber.",
   "pflicht": false
 }
