@@ -224,16 +224,60 @@ die App keine Berechtigung zum Installieren von Apps.
 2. In der App unter **Einstellungen → Updates** die Adresse der `update.json`
    eintragen und einmal „Jetzt nach Updates suchen" drücken.
 
-**Bei jeder neuen Version:** `versionCode` und `versionName` in
-`android/app/build.gradle`, `www/js/core/version.js` und `CACHE` in `www/sw.js`
-erhöhen (`npm test` prüft, dass die drei zusammenpassen), APK bauen, APK und
-`update.json` hochladen.
+**Bei jeder neuen Version:** ein Befehl, siehe unten — `npm run release`
+erledigt Versionsanhebung, Tests, APK-Bau und das Hochladen in einem Zug.
 
 **Was übertragen wird:** ein GET auf die Update-Datei, ohne Cookies, ohne
 Kennung, ohne Angaben zu Gerät, Betrieb oder Kalkulationen. Prüfabstand
 standardmäßig 24 Stunden, abschaltbar. Downloadadressen werden nur über
 `https` akzeptiert. Läuft die App über den Play Store, übernimmt der Store das
 Aktualisieren — dann einfach keine Adresse eintragen.
+
+---
+
+## Veröffentlichen
+
+```bash
+npm run release
+```
+
+Das war's. Der Befehl macht in dieser Reihenfolge:
+
+1. **Prüft die Ausgangslage** — nur aus `main`, nur mit sauberem
+   Arbeitsverzeichnis. Sonst bricht er ab, bevor irgendetwas passiert.
+2. **Hebt die Version an allen vier Stellen an**, die zusammenpassen müssen:
+   `www/js/core/version.js`, `CACHE` in `www/sw.js`,
+   `android/app/build.gradle` und `update.json`. Er ersetzt nur, wenn er
+   genau einen Treffer je Stelle findet — sonst Abbruch statt halber Arbeit.
+3. **Lässt alle Tests laufen.** Schlägt einer fehl, wird nichts hochgeladen.
+4. **Baut das APK** (`cap sync` + Gradle) und **prüft das FERTIGE Paket** gegen:
+   steckt die richtige Version darin, und sind alle Dateien enthalten, die der
+   Service Worker offline ausliefern will?
+5. **Lädt hoch** nach `gh-pages`: Web-Dateien, APK, `update.json`. Alte APKs
+   werden bis auf die letzten zwei ausgeräumt.
+6. **Committet die Versionsanhebung** in `main` und pusht sie.
+7. **Sieht live nach**, ob `sw.js`, APK und `update.json` tatsächlich
+   abrufbar sind.
+
+| Schalter | Wirkung |
+|---|---|
+| *(ohne)* | nächste Fehlerbehebungs-Nummer, z. B. 1.0.5 → 1.0.6 |
+| `--minor` / `--major` | 1.0.5 → 1.1.0 bzw. 2.0.0 |
+| `--version 2.3.1` | genau diese Nummer |
+| `--hinweise "Text"` | erscheint in der Update-Meldung in der App |
+| `--probe` | alles rechnen und bauen, aber **nichts** hochladen |
+| `--zweig test` | in einen anderen Zweig statt `gh-pages` veröffentlichen |
+| `--nur-web` | ohne APK; `update.json` bleibt dann unangetastet |
+| `--kein-commit` | Versionsanhebung nicht selbst in `main` committen |
+
+**Ein Riegel, der schon zweimal gebraucht wurde:** `update.json` wird nur
+mitgeschickt, wenn das darin genannte APK auch wirklich im Zweig liegt. Sonst
+schickte die Update-Prüfung die Leute auf eine 404-Adresse.
+
+Der Befehl läuft in der Windows-Eingabeaufforderung genauso wie in der
+PowerShell oder unter Linux. Er braucht `git`, Node ≥ 22, das Android-SDK
+(`ANDROID_HOME`) und ein JDK — sonst nichts; das Auslesen des fertigen APK
+macht er selbst, ohne `unzip`.
 
 ---
 

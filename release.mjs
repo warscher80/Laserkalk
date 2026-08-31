@@ -23,6 +23,7 @@
  *   npm run release -- --version 2.0.0
  *   npm run release -- --hinweise "Was neu ist"
  *   npm run release -- --probe      alles rechnen und bauen, aber NICHTS hochladen
+ *   npm run release -- --kein-commit  Versionsanhebung nicht in main committen
  *   npm run release -- --nur-web    ohne APK veröffentlichen (update.json bleibt)
  *   npm run release -- --zweig test-veroeffentlichung    in einen anderen Zweig
  *
@@ -67,6 +68,7 @@ const wert = (n, standard = null) => {
 
 const PROBE = hatFlag('--probe');
 const NUR_WEB = hatFlag('--nur-web');
+const COMMITTEN = !hatFlag('--kein-commit');
 
 let schritt = 0;
 const sage = (t) => console.log(`\n[${++schritt}] ${t}`);
@@ -392,7 +394,31 @@ try {
 }
 
 /* ------------------------------------------------------------------ */
-/* 6. Live gegenprüfen                                                 */
+/* 6. Versionsanhebung in main festhalten                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Ohne diesen Schritt bliebe main mit angehobener, aber uncommitteter
+ * Version zurück — während draußen bereits die neue Fassung liegt. Beim
+ * nächsten Lauf stünde dann eine falsche Ausgangsversion in den Dateien.
+ */
+if (COMMITTEN) {
+  sage('Versionsanhebung in main festhalten');
+  try {
+    execSync('git add www/js/core/version.js www/sw.js android/app/build.gradle update.json', { cwd: WURZEL });
+    execSync('git -c user.name="LaserKalk Release" -c user.email="nicowarscher@gmx.at" commit -q -F -',
+      { cwd: WURZEL, input: `LaserKalk ${neuName} (Build ${neuCode})\n\n${hinweise}\n` });
+    ok('committet');
+    execSync('git push -q origin HEAD:main', { cwd: WURZEL });
+    ok('nach main gepusht');
+  } catch (e) {
+    warnung('Konnte nicht committen oder pushen: ' + (e.message || e));
+    warnung('Bitte von Hand: git commit -am "LaserKalk ' + neuName + '" && git push');
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 7. Live gegenprüfen                                                 */
 /* ------------------------------------------------------------------ */
 
 sage('Live gegenprüfen');
@@ -430,5 +456,7 @@ console.log('\n' + '='.repeat(48));
 console.log(`LaserKalk ${neuName} (Build ${neuCode}) ist veröffentlicht.`);
 console.log(`  Web-App:  ${BASIS_URL}/`);
 if (apkPfad) console.log(`  Paket:    ${BASIS_URL}/${APK_NAME}${signiert ? '' : '   (Debug-Signatur!)'}`);
-console.log('\nNoch zu tun im Haupt-Repo:');
-console.log(`  git commit -am "LaserKalk ${neuName}" && git push`);
+if (!COMMITTEN) {
+  console.log('\nNoch zu tun im Haupt-Repo:');
+  console.log(`  git commit -am "LaserKalk ${neuName}" && git push`);
+}
