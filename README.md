@@ -71,18 +71,15 @@ alten Dateien aus.
 ### Als echte Android-App (Capacitor)
 
 Gleiche Toolchain wie Spanwerk, aber eigene App-ID `at.warscher.laserkalk`.
-Das Android-Projekt liegt in `laserkalk/android/` und ist im Repo enthalten.
+Das Android-Projekt liegt in `android/` und ist im Repo enthalten.
 
-**Wichtig:** Die Capacitor-CLI 8 kennt kein `--config`. Alle `cap`-Befehle
-müssen deshalb **aus dem Ordner `laserkalk/`** laufen — dort liegt die eigene
-`capacitor.config.json`. Aus dem Repo-Wurzelverzeichnis würde Capacitor die
-Spanwerk-Konfiguration verwenden.
+Capacitor wird **nur zum Bauen** gebraucht — die App selbst kommt ohne
+Abhängigkeiten aus. Deshalb steht `node_modules/` nicht im Repo und wird
+einmalig nachgezogen:
 
 ```powershell
-npm install                    # einmalig, im Repo-Wurzelverzeichnis
-
-cd laserkalk
-npx cap sync android           # Web-Assets ins Android-Projekt kopieren
+npm install                    # einmalig: holt @capacitor/{core,cli,android}
+npx cap sync android           # Web-Dateien nach android/app/src/main/assets/public
 
 $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 $env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
@@ -91,16 +88,28 @@ cd android
 .\gradlew bundleRelease assembleRelease   # Store-Build, braucht keystore.properties
 ```
 
+Alle Befehle laufen **im Ordner `laserkalk/`** (dort liegt
+`capacitor.config.json`); die Capacitor-CLI 8 kennt kein `--config`.
+
 Ergebnisse:
 `android\app\build\outputs\apk\debug\app-debug.apk` bzw.
 `…\apk\release\app-release.apk` und `…\bundle\release\app-release.aab`.
+
+**Nach dem Bauen prüfen, nicht nur vor dem Bauen:** die Web-Dateien AUS dem
+fertigen APK auspacken und dagegen testen — sonst prüft man die Quelldateien
+und nicht das, was auf dem Gerät landet.
+
+```bash
+cd /tmp && unzip -o app-debug.apk 'assets/*' && npx http-server assets/public -p 4633
+```
 
 Nach Änderungen an Logo oder Farben `node icon-gen.js` ausführen — das
 erzeugt die PWA-Symbole **und** die Android-Launcher-Symbole und
 Startbildschirme neu.
 
-Bei App-Änderungen `versionCode` und `versionName` in
-`laserkalk/android/app/build.gradle` erhöhen (aktuell 1 / 1.0.0).
+Bei App-Änderungen `versionCode`/`versionName` in `android/app/build.gradle`,
+`www/js/core/version.js`, `CACHE` in `www/sw.js` und `update.json` gemeinsam
+erhöhen — `npm test` wacht darüber.
 
 Die App braucht **keine Berechtigungen** außer `INTERNET` (von Capacitor für
 den lokalen WebView-Server gesetzt) — die DXF-Auswahl läuft über das normale
@@ -111,8 +120,28 @@ Dateifeld des WebViews.
 Ein Release-Build braucht einen eigenen Upload-Keystore für
 `at.warscher.laserkalk`. Der Spanwerk-Keystore gehört zu einer anderen
 App-ID und kann dafür **nicht** verwendet werden. Der Keystore und
-`laserkalk/android/keystore.properties` gehören nicht ins Repo
-(beide sind in `.gitignore`).
+`android/keystore.properties` gehören nicht ins Repo (beide sind in
+`.gitignore`).
+
+⚠️ **Die bisher verteilten Test-APKs sind mit dem Android-DEBUG-Schlüssel
+signiert.** Das genügt zum Seitwärts-Installieren, hat aber zwei Haken:
+
+1. Für den Play Store ist es unbrauchbar.
+2. Android lässt ein Update nur zu, wenn der Signaturschlüssel derselbe ist.
+   Der Debug-Schlüssel entsteht pro Rechner neu — ein APK von einem anderen
+   Rechner installiert sich **nicht** über ein bestehendes, der Benutzer
+   müsste deinstallieren und verlöre dabei seine Daten (vorher Backup!).
+
+Deshalb gehört einmalig ein richtiger Release-Keystore erzeugt und wie die
+Spanwerk-Schlüssel in `C:\Users\nwars\Spanwerk-Keys\` abgelegt:
+
+```powershell
+keytool -genkeypair -v -keystore C:\Users\nwars\Spanwerk-Keys\laserkalk-upload.keystore `
+  -alias laserkalk -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Danach `android/keystore.properties` anlegen (BOM-frei!) und ab dann jedes
+verteilte APK damit signieren.
 
 ---
 

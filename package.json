@@ -9,5 +9,10 @@
     "start": "http-server www -p 4611 -c-1",
     "icons": "node icon-gen.js",
     "test:browser": "node tests/oberflaeche.browser.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0"
   }
 }

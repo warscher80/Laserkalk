@@ -1,0 +1,19 @@
+# Abhängigkeiten. Die App selbst kommt ohne aus; Capacitor wird nur zum
+# Bauen des Android-Pakets gebraucht und per npm install nachgezogen.
+node_modules/
+
+# Build-Ergebnisse und Signaturmaterial gehören NIE ins Repo.
+*.apk
+*.aab
+*.keystore
+keystore.properties
+android/local.properties
+
+# Von Capacitor erzeugt (entsteht bei jedem `npx cap sync android` neu)
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/app/capacitor.build.gradle
+android/capacitor-cordova-android-plugins/
+
+.DS_Store
