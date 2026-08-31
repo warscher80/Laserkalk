@@ -123,25 +123,31 @@ App-ID und kann dafür **nicht** verwendet werden. Der Keystore und
 `android/keystore.properties` gehören nicht ins Repo (beide sind in
 `.gitignore`).
 
-⚠️ **Die bisher verteilten Test-APKs sind mit dem Android-DEBUG-Schlüssel
-signiert.** Das genügt zum Seitwärts-Installieren, hat aber zwei Haken:
+Der Schlüssel ist erzeugt und liegt bei den Spanwerk-Schlüsseln:
 
-1. Für den Play Store ist es unbrauchbar.
-2. Android lässt ein Update nur zu, wenn der Signaturschlüssel derselbe ist.
-   Der Debug-Schlüssel entsteht pro Rechner neu — ein APK von einem anderen
-   Rechner installiert sich **nicht** über ein bestehendes, der Benutzer
-   müsste deinstallieren und verlöre dabei seine Daten (vorher Backup!).
-
-Deshalb gehört einmalig ein richtiger Release-Keystore erzeugt und wie die
-Spanwerk-Schlüssel in `C:\Users\nwars\Spanwerk-Keys\` abgelegt:
-
-```powershell
-keytool -genkeypair -v -keystore C:\Users\nwars\Spanwerk-Keys\laserkalk-upload.keystore `
-  -alias laserkalk -keyalg RSA -keysize 2048 -validity 10000
+```
+C:\Users\nwars\Spanwerk-Keys\laserkalk-upload.keystore
 ```
 
-Danach `android/keystore.properties` anlegen (BOM-frei!) und ab dann jedes
-verteilte APK damit signieren.
+| | |
+|---|---|
+| Alias | `laserkalk` |
+| Verfahren | RSA 4096, SHA384withRSA |
+| SHA-256 | `99:C8:21:87:83:60:53:EA:8B:79:AC:7E:A9:4E:A0:FD:3E:B0:E8:77:60:A2:D6:7D:73:50:A5:55:CE:FE:0F:31` |
+| Gültig bis | 16.01.2054 |
+
+`android/keystore.properties` (BOM-frei, nicht im Repo) verweist darauf;
+`npm run release` baut damit automatisch signiert.
+
+⚠️ **Ohne diesen Schlüssel lässt sich die App nie mehr aktualisieren.** Geht
+er verloren, müssen alle Benutzer deinstallieren und verlieren dabei ihre
+Daten. Er gehört gesichert wie die Spanwerk-Schlüssel.
+
+**Einmaliger Bruch bei 1.1.0:** Die Fassungen bis 1.0.5 trugen noch den
+Android-Debug-Schlüssel. 1.1.0 ist die erste richtig signierte — sie lässt
+sich deshalb nicht über eine ältere Installation legen. Der Weg steht in der
+Update-Meldung: Backup speichern, deinstallieren, neu installieren, Backup
+einspielen. Ab 1.1.0 laufen Updates wieder normal darüber.
 
 ---
 
