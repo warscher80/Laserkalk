@@ -1,8 +1,8 @@
 {
   "_hinweis": "Update-Prüfung für LaserKalk. Liegt unter https://warscher80.github.io/Laserkalk/update.json und wird von der App abgefragt. Bei jeder neuen Version hier versionCode, versionName, apkUrl und hinweise anpassen.",
-  "versionCode": 3,
-  "versionName": "1.0.2",
-  "apkUrl": "https://warscher80.github.io/Laserkalk/LaserKalk-1.0.2.apk",
-  "hinweise": "iPhone-Unterstützung und Auto-Update eingerichtet.",
+  "versionCode": 6,
+  "versionName": "1.0.5",
+  "apkUrl": "https://warscher80.github.io/Laserkalk/LaserKalk-1.0.5.apk",
+  "hinweise": "Ungültige Eingaben werden nicht mehr stillschweigend ersetzt: fehlerhafte Felder werden benannt, das Ergebnis bleibt gesperrt, bis sie berichtigt sind. Alle Felder sind sauber beschriftet.",
   "pflicht": false
 }
