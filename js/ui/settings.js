@@ -6,7 +6,7 @@
 
 import {
   h, card, field, text, num, money, prozent, select, seg, switchRow, note, toast, icon,
-  sheet, bestaetige, empty, leere, res, nivox } from './components.js';
+  sheet, bestaetige, empty, leere, res, nivox, dialogSpeichern } from './components.js';
 import { store } from '../core/store.js';
 import { setzeTheme, appUpdatePruefen, istNativeApp } from './app.js';
 import { APP_VERSION, versionText } from '../core/version.js';
@@ -68,7 +68,7 @@ function uebersicht(ctx) {
   el.appendChild(card('Kalkulationsnummern',
     h('.grid', null,
       field('Präfix', text(s.nummernPraefix, async v => { await store.setSettings({ nummernPraefix: v || 'K' }); })),
-      field('Nächster Zähler', num(s.nummernZaehler, async v => { await store.setSettings({ nummernZaehler: Math.max(1, Math.trunc(v) || 1) }); })),
+      field('Nächster Zähler', num(s.nummernZaehler, async v => { await store.setSettings({ nummernZaehler: v }); }, { regel: 'stueckzahl' })),
     ),
     h('.hint', { text: `Nächste Nummer: ${s.nummernPraefix || 'K'}-${new Date().getFullYear()}-${String(s.nummernZaehler || 1).padStart(4, '0')}` })));
 
@@ -87,17 +87,17 @@ function saetze(ctx) {
 
   el.appendChild(card('Stundensätze (netto)',
     h('.grid', null,
-      field('Laser / Maschine', money(s.laserSatzCent, v => sichern({ laserSatzCent: v }), { einheit: '€/h' })),
-      field('CAD / Programmierung', money(s.cadSatzCent, v => sichern({ cadSatzCent: v }), { einheit: '€/h' })),
-      field('Bediener / Rüsten', money(s.bedienerSatzCent, v => sichern({ bedienerSatzCent: v }), { einheit: '€/h' })),
-      field('Entgraten / Nachbearbeitung', money(s.entgratSatzCent, v => sichern({ entgratSatzCent: v }), { einheit: '€/h' })),
+      field('Laser / Maschine', money(s.laserSatzCent, v => sichern({ laserSatzCent: v }), { einheit: '€/h', regel: 'satz' })),
+      field('CAD / Programmierung', money(s.cadSatzCent, v => sichern({ cadSatzCent: v }), { einheit: '€/h', regel: 'satz' })),
+      field('Bediener / Rüsten', money(s.bedienerSatzCent, v => sichern({ bedienerSatzCent: v }), { einheit: '€/h', regel: 'satz' })),
+      field('Entgraten / Nachbearbeitung', money(s.entgratSatzCent, v => sichern({ entgratSatzCent: v }), { einheit: '€/h', regel: 'satz' })),
     ),
     h('.hint', { text: 'Diese Sätze werden in jede neue Kalkulation übernommen und sind dort einzeln überschreibbar.' })));
 
   el.appendChild(card('Material',
     h('.grid', null,
-      field('Materialaufschlag', prozent(s.materialAufschlagBp, v => sichern({ materialAufschlagBp: v }))),
-      field('Verschnitt (Standard)', prozent(s.verschnittBp, v => sichern({ verschnittBp: v }))),
+      field('Materialaufschlag', prozent(s.materialAufschlagBp, v => sichern({ materialAufschlagBp: v }), { regel: 'prozentAufschlag' })),
+      field('Verschnitt (Standard)', prozent(s.verschnittBp, v => sichern({ verschnittBp: v }), { regel: 'prozentVerschnitt' })),
     )));
 
   const gewinnBox = h('div');
@@ -114,7 +114,7 @@ function saetze(ctx) {
       }),
     ));
     if (s.gewinnModus === 'aufschlag') {
-      gewinnBox.appendChild(field('Gewinnaufschlag', prozent(s.gewinnBp, v => sichern({ gewinnBp: v }))));
+      gewinnBox.appendChild(field('Gewinnaufschlag', prozent(s.gewinnBp, v => sichern({ gewinnBp: v }), { regel: 'prozentAufschlag' })));
     }
   };
   zeichneGewinn();
@@ -126,14 +126,14 @@ function saetze(ctx) {
     mindestBox.appendChild(switchRow('Mindestauftragswert anwenden', s.mindestwertAktiv,
       async v => { await sichern({ mindestwertAktiv: v }); zeichneMindest(); }));
     if (s.mindestwertAktiv) {
-      mindestBox.appendChild(field('Mindestauftragswert (netto)', money(s.mindestwertCent, v => sichern({ mindestwertCent: v })),
+      mindestBox.appendChild(field('Mindestauftragswert (netto)', money(s.mindestwertCent, v => sichern({ mindestwertCent: v }), { regel: 'preis' }),
         'Liegt der berechnete Preis darunter, wird dieser Wert verrechnet.'));
     }
   };
   zeichneMindest();
   el.appendChild(card('Mindestauftragswert', mindestBox));
 
-  el.appendChild(card('Steuer', field('Mehrwertsteuer', prozent(s.mwstBp, v => sichern({ mwstBp: v })))));
+  el.appendChild(card('Steuer', field('Mehrwertsteuer', prozent(s.mwstBp, v => sichern({ mwstBp: v }), { regel: 'prozentMwst' }))));
 
   el.appendChild(note('info', 'Änderungen werden sofort gespeichert und gelten für neue Kalkulationen. Bereits gespeicherte Kalkulationen behalten ihre Werte.'));
 
@@ -151,12 +151,12 @@ function prozesse(ctx) {
     const daten = { ...neu };
     const ok = await sheet(p ? 'Bearbeitung ändern' : 'Neue Bearbeitungsart', (schliessen) => h('div', null,
       field('Name', text(daten.name, v => { daten.name = v; }, { placeholder: 'z. B. Pulverbeschichten' })),
-      field('Stundensatz', money(daten.satzCent, v => { daten.satzCent = v; }, { einheit: '€/h' })),
+      field('Stundensatz', money(daten.satzCent, v => { daten.satzCent = v; }, { einheit: '€/h', regel: 'satz' })),
       h('.field', null, h('label', { text: 'Status' }),
         seg([['ja', 'aktiv'], ['nein', 'inaktiv']], daten.aktiv === false ? 'nein' : 'ja', v => { daten.aktiv = v === 'ja'; }, 'small')),
       h('.sheetfoot', null,
         h('button.btn', { text: 'Abbrechen', onclick: () => schliessen(false) }),
-        h('button.btn.primary', { text: 'Speichern', onclick: () => schliessen(true) }),
+        dialogSpeichern(schliessen),
       ),
     ));
     if (!ok) return;
@@ -209,7 +209,7 @@ function gase(ctx) {
         preisFeldBox.appendChild(h('.hint', { text: 'Es werden keine zusätzlichen Gaskosten berechnet.' }));
       } else {
         preisFeldBox.appendChild(field('Preis', money(daten.preisCent, v => { daten.preisCent = v; },
-          { einheit: daten.modus === 'proStunde' ? '€/h' : daten.modus === 'proMinute' ? '€/min' : '€' })));
+          { regel: 'preis', einheit: daten.modus === 'proStunde' ? '€/h' : daten.modus === 'proMinute' ? '€/min' : '€' })));
       }
     };
     zeichnePreis();
@@ -219,7 +219,7 @@ function gase(ctx) {
       preisFeldBox,
       h('.sheetfoot', null,
         h('button.btn', { text: 'Abbrechen', onclick: () => schliessen(false) }),
-        h('button.btn.primary', { text: 'Speichern', onclick: () => schliessen(true) }),
+        dialogSpeichern(schliessen),
       ),
     ));
     if (!ok) return;
@@ -278,13 +278,13 @@ function gruppen(ctx) {
     const daten = { ...(g || { id: '', name: '', dichteStd: 7850, aktiv: true, sort: (store.gruppen().length + 1) * 10 }) };
     const ok = await sheet(g ? 'Materialgruppe ändern' : 'Neue Materialgruppe', (schliessen) => h('div', null,
       field('Name', text(daten.name, v => { daten.name = v; }, { placeholder: 'z. B. Messing' })),
-      field('Standard-Dichte', num(daten.dichteStd, v => { daten.dichteStd = v; }, { unit: 'kg/m³' }),
+      field('Standard-Dichte', num(daten.dichteStd, v => { daten.dichteStd = v; }, { unit: 'kg/m³', regel: 'dichte' }),
         'Wird beim Anlegen eines neuen Blechs dieser Gruppe vorgeschlagen und ist dort änderbar.'),
       h('.field', null, h('label', { text: 'Status' }),
         seg([['ja', 'aktiv'], ['nein', 'inaktiv']], daten.aktiv === false ? 'nein' : 'ja', v => { daten.aktiv = v === 'ja'; }, 'small')),
       h('.sheetfoot', null,
         h('button.btn', { text: 'Abbrechen', onclick: () => schliessen(false) }),
-        h('button.btn.primary', { text: 'Speichern', onclick: () => schliessen(true) }),
+        dialogSpeichern(schliessen),
       ),
     ));
     if (!ok) return;
@@ -341,15 +341,15 @@ function schnitt(ctx) {
       h('.grid', null,
         field('Materialgruppe', select(store.gruppen().map(g => [g.id, g.name]), daten.groupId, v => { daten.groupId = v; })),
         field('Werkstoff', text(daten.werkstoff, v => { daten.werkstoff = v; }, { placeholder: 'S235JR' })),
-        field('Blechstärke', num(daten.dickeMm, v => { daten.dickeMm = v; }, { unit: 'mm' })),
+        field('Blechstärke', num(daten.dickeMm, v => { daten.dickeMm = v; }, { unit: 'mm', regel: 'mass' })),
         field('Gas', select(store.gase().map(g => [g.name, g.name]), daten.gas, v => { daten.gas = v; })),
-        field('Schnittgeschwindigkeit', num(daten.vSchnittMmMin, v => { daten.vSchnittMmMin = v; }, { unit: 'mm/min' })),
-        field('Einstichzeit', num(daten.piercingSek, v => { daten.piercingSek = v; }, { unit: 's' })),
+        field('Schnittgeschwindigkeit', num(daten.vSchnittMmMin, v => { daten.vSchnittMmMin = v; }, { unit: 'mm/min', regel: 'geschwindigkeit' })),
+        field('Einstichzeit', num(daten.piercingSek, v => { daten.piercingSek = v; }, { unit: 's', regel: 'sekunden' })),
       ),
       field('Notiz', text(daten.notizen, v => { daten.notizen = v; })),
       h('.sheetfoot', null,
         h('button.btn', { text: 'Abbrechen', onclick: () => schliessen(false) }),
-        h('button.btn.primary', { text: 'Speichern', onclick: () => schliessen(true) }),
+        dialogSpeichern(schliessen),
       ),
     ));
     if (!ok) return;
@@ -394,7 +394,7 @@ function schnitt(ctx) {
   el.appendChild(note('warn', 'Die mitgelieferten Werte sind grobe Richtwerte. Bitte an der eigenen Maschine überprüfen und anpassen – davon hängt die geschätzte Laserzeit ab.'));
   el.appendChild(box);
   el.appendChild(card('Nebenzeit',
-    field('Nebenzeit je Bauteil', num(store.settings.nebenzeitSek, async v => { await store.setSettings({ nebenzeitSek: Math.max(0, v) }); }, { unit: 's' }),
+    field('Nebenzeit je Bauteil', num(store.settings.nebenzeitSek, async v => { await store.setSettings({ nebenzeitSek: v }); }, { unit: 's', regel: 'sekunden' }),
       'Positionieren, Verfahrwege zwischen Konturen, Ein-/Ausfahren. Wird bei der Laserzeit-Schätzung je Stück aufgeschlagen.')));
   el.appendChild(h('button.btn.primary.block.mt', { onclick: () => bearbeiten(null) }, icon('plus', 18), 'Schnittparameter hinzufügen'));
   return { kopf: { titel: 'Schnittparameter', zurueck: '/settings' }, el };
@@ -439,15 +439,15 @@ function maschine(ctx) {
     }
   };
 
-  const f = (label, feld, einheit, geld = true) => field(label,
+  const f = (label, feld, einheit, geld = true, regel = 'menge') => field(label,
     geld
-      ? money(m.kalk[feld] || 0, v => { m.kalk[feld] = v; zeichneErgebnis(); sichern(); }, { einheit })
-      : num(m.kalk[feld] || 0, v => { m.kalk[feld] = v; zeichneErgebnis(); sichern(); }, { unit: einheit }));
+      ? money(m.kalk[feld] || 0, v => { m.kalk[feld] = v; zeichneErgebnis(); sichern(); }, { einheit, regel: 'preis' })
+      : num(m.kalk[feld] || 0, v => { m.kalk[feld] = v; zeichneErgebnis(); sichern(); }, { unit: einheit, regel }));
 
   el.appendChild(card('Maschine',
     h('.grid', null,
       field('Bezeichnung', text(m.name, v => { m.name = v; sichern(); })),
-      field('Verrechnungssatz (manuell)', money(m.verrechnungssatzCent, v => { m.verrechnungssatzCent = v; zeichneErgebnis(); sichern(); }, { einheit: '€/h' })),
+      field('Verrechnungssatz (manuell)', money(m.verrechnungssatzCent, v => { m.verrechnungssatzCent = v; zeichneErgebnis(); sichern(); }, { einheit: '€/h', regel: 'satz' })),
     ),
     h('button.btn.small.block.mt', {
       text: 'Verrechnungssatz als Laser-Stundensatz übernehmen',
@@ -507,11 +507,11 @@ function dxfEinstellungen(ctx) {
 
   el.appendChild(card('Toleranzen',
     h('.grid', null,
-      field('Verkettungstoleranz', num(s.dxfToleranzMm, v => sichern({ dxfToleranzMm: Math.max(0.0001, v) }), { unit: 'mm' }),
+      field('Verkettungstoleranz', num(s.dxfToleranzMm, v => sichern({ dxfToleranzMm: v }), { unit: 'mm', regel: 'toleranz' }),
         'Bis zu diesem Abstand gelten zwei Linienenden als verbunden.'),
-      field('Abflachung von Bögen', num(s.dxfFlachToleranzMm, v => sichern({ dxfFlachToleranzMm: Math.max(0.0005, v) }), { unit: 'mm' }),
+      field('Abflachung von Bögen', num(s.dxfFlachToleranzMm, v => sichern({ dxfFlachToleranzMm: v }), { unit: 'mm', regel: 'toleranz' }),
         'Maximale Abweichung beim Zerlegen von Bögen und Splines in Geraden.'),
-      field('Grenze „extrem kurz"', num(s.dxfMinSegmentMm, v => sichern({ dxfMinSegmentMm: Math.max(0, v) }), { unit: 'mm' }),
+      field('Grenze „extrem kurz"', num(s.dxfMinSegmentMm, v => sichern({ dxfMinSegmentMm: v }), { unit: 'mm', regel: 'massOptional' }),
         'Kürzere Segmente werden als Zeichnungsfehler gemeldet.'),
     )));
 
@@ -815,7 +815,7 @@ function updates(ctx) {
       'Prüft im Hintergrund, ob eine neuere Version bereitsteht'));
     if (s.updateAktiv !== false) {
       einstellBox.appendChild(field('Prüfabstand',
-        num(s.updateIntervallStunden, v => sichern({ updateIntervallStunden: Math.max(1, Math.trunc(v) || 24) }), { unit: 'Stunden' }),
+        num(s.updateIntervallStunden, v => sichern({ updateIntervallStunden: v }), { unit: 'Stunden', regel: 'stueckzahl' }),
         'Höchstens einmal in diesem Abstand; beim Start der App.'));
     }
     einstellBox.appendChild(field('Adresse der Update-Datei',

@@ -130,6 +130,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent); background:v
 /* Ungültige Eingabe: sichtbar, aber der bisherige Wert bleibt bestehen. */
 input.ungueltig,input.ungueltig:focus{border-color:var(--bad); background:rgba(255,95,95,.10)}
 .hint.feldfehler{margin-top:4px}
+/* Noch nicht ausgefüllt ist kein Fehler des Benutzers – gelb statt rot. */
+input.unvollstaendig,input.unvollstaendig:focus{border-color:var(--warn)}
+.hint.feldoffen{margin-top:4px}
+
+/* Ergebnisbereich, solange Eingaben fehlen oder falsch sind. */
+.pruefhinweis{
+  border:1px solid var(--bad); border-radius:var(--r);
+  background:rgba(255,95,95,.10); padding:14px 15px; margin-top:14px;
+}
+.pruefhinweis .ph-titel{font-weight:800; font-size:16px; color:var(--bad); margin-bottom:6px}
+.pruefhinweis p{margin:4px 0; font-size:13.5px; line-height:1.45}
+.pruefhinweis .ph-fuss{color:var(--muted); font-size:12.5px}
+.btn:disabled,.btn[disabled]{opacity:.45; cursor:not-allowed}
+.btn:disabled:active{background:var(--card)}
 /* Sichtbarer Fokus für Tastaturbedienung – nur bei Tastatur, nicht bei Mausklick. */
 :focus-visible{outline:3px solid var(--accent); outline-offset:2px; border-radius:8px}
 .btn:focus-visible,.tile:focus-visible,.seg button:focus-visible,.iconbtn:focus-visible,

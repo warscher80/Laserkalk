@@ -3,7 +3,8 @@
  * Nur die acht Eingaben, die man am Telefon braucht. Ergebnis sofort sichtbar.
  */
 
-import { h, card, field, num, money, seg, note, toast, res, entprellt, leere } from './components.js';
+import { h, card, field, num, money, seg, note, toast, res, entprellt, leere,
+  beiFeldpruefung, ergebnisSperre } from './components.js';
 import { store } from '../core/store.js';
 import { berechne, neueKalkulation, neueZeit } from '../calc/engine.js';
 import { eur, num as fmtNum } from '../core/money.js';
@@ -45,6 +46,15 @@ export async function render(ctx) {
   const merken = () => { try { sessionStorage.setItem(SCHLUESSEL, JSON.stringify(calc)); } catch { /* egal */ } };
 
   const aktualisiere = () => {
+    /*
+     * ZUERST prüfen, DANN rechnen. Vorher wurden ungültige Eingaben im
+     * Callback stillschweigend ersetzt (0 Stück → 1, −1 min → 0) und der
+     * Preis sah plausibel aus. Genau das darf nicht mehr passieren.
+     */
+    if (!ergebnisSperre(el, ergebnisBox, [speichernKnopf])) {
+      ctx.zeigePreis({ unsicher: true, unsicherGrund: 'Eingaben prüfen' });
+      return;
+    }
     let r;
     try { r = berechne(calc); } catch (e) { toast(e.message, 'bad'); return; }
     merken();
@@ -81,17 +91,17 @@ export async function render(ctx) {
     const e = h('div');
     if (v.methode === 'rechteck') {
       e.appendChild(h('.grid', null,
-        field('Länge', num(v.laengeMm, x => { v.laengeMm = Math.max(0, x); spaeter(); }, { unit: 'mm' })),
-        field('Breite', num(v.breiteMm, x => { v.breiteMm = Math.max(0, x); spaeter(); }, { unit: 'mm' })),
+        field('Länge', num(v.laengeMm, x => { v.laengeMm = x; spaeter(); }, { unit: 'mm', regel: 'mass' })),
+        field('Breite', num(v.breiteMm, x => { v.breiteMm = x; spaeter(); }, { unit: 'mm', regel: 'mass' })),
       ));
     } else if (v.methode === 'flaeche') {
-      e.appendChild(field('Fläche', num(v.flaecheM2, x => { v.flaecheM2 = Math.max(0, x); spaeter(); }, { unit: 'm²' })));
+      e.appendChild(field('Fläche', num(v.flaecheM2, x => { v.flaecheM2 = x; spaeter(); }, { unit: 'm²', regel: 'mass' })));
     } else if (v.methode === 'gewicht') {
-      e.appendChild(field('Gewicht', num(v.gewichtKg, x => { v.gewichtKg = Math.max(0, x); spaeter(); }, { unit: 'kg' })));
+      e.appendChild(field('Gewicht', num(v.gewichtKg, x => { v.gewichtKg = x; spaeter(); }, { unit: 'kg', regel: 'mass' })));
     } else if (v.methode === 'tafeln') {
-      e.appendChild(field('Anzahl Tafeln', num(v.tafeln, x => { v.tafeln = Math.max(0, x); spaeter(); }, { unit: 'Tafeln' })));
+      e.appendChild(field('Anzahl Tafeln', num(v.tafeln, x => { v.tafeln = x; spaeter(); }, { unit: 'Tafeln', regel: 'mass' })));
     } else {
-      e.appendChild(field('Materialkosten (Einkauf)', money(v.kostenCent, x => { v.kostenCent = x; spaeter(); })));
+      e.appendChild(field('Materialkosten (Einkauf)', money(v.kostenCent, x => { v.kostenCent = x; spaeter(); }, { regel: 'preis' })));
     }
     e.appendChild(h('.field', null,
       seg([['stk', 'je Stück'], ['ges', 'gesamter Auftrag']], v.proStueck ? 'stk' : 'ges',
@@ -101,11 +111,19 @@ export async function render(ctx) {
 
   const zeitFeld = (art, label) => {
     const z = zeitVon(art);
-    return field(label, num(z.minuten, v => { z.minuten = Math.max(0, v); if (art === 'laser') z.quelle = 'manuell'; spaeter(); }, { unit: 'min' }),
+    return field(label, num(z.minuten, v => { z.minuten = v; if (art === 'laser') z.quelle = 'manuell'; spaeter(); },
+      { unit: 'min', regel: 'zeit' }),
       z.modus === 'einmalig' ? 'einmalig' : 'je Stück');
   };
 
+  const speichernKnopf = h('button.btn.primary', { text: 'Als Kalkulation speichern', onclick: () => uebernehmen() });
+
   async function uebernehmen() {
+    // Zweiter Riegel: auch ein Tastendruck darf nichts Ungeprüftes speichern.
+    if (!ergebnisSperre(el, ergebnisBox, [speichernKnopf])) {
+      toast('Bitte zuerst die markierten Eingaben berichtigen.', 'bad');
+      return;
+    }
     const doc = await store.saveKalkulation({ ...calc, bauteil: calc.bauteil || 'Schnellkalkulation' });
     toast(`Gespeichert als ${doc.nummer}.`, 'ok');
     ctx.gehe('/calc/' + doc.id);
@@ -118,8 +136,8 @@ export async function render(ctx) {
       h('div', null,
         card('Material', picker, verbrauchBox),
         card('Stückzahl', field('Stückzahl', num(calc.stueckzahl, v => {
-          calc.stueckzahl = Math.max(1, Math.trunc(v) || 1); spaeter();
-        }, { unit: 'Stk' }))),
+          calc.stueckzahl = v; spaeter();
+        }, { unit: 'Stk', regel: 'stueckzahl' }), 'Ganze Zahl, mindestens 1.')),
       ),
       h('div', null,
         card('Zeiten',
@@ -135,7 +153,7 @@ export async function render(ctx) {
     ),
     ergebnisBox,
     h('.btnrow', null,
-      h('button.btn.primary', { text: 'Als Kalkulation speichern', onclick: uebernehmen }),
+      speichernKnopf,
       h('button.btn', {
         text: 'Zurücksetzen',
         onclick: () => { try { sessionStorage.removeItem(SCHLUESSEL); } catch {} ctx.gehe('/quick'); location.reload(); },
@@ -143,6 +161,8 @@ export async function render(ctx) {
     ),
   );
 
+  // Jede Feldprüfung schaltet Ergebnis und Speichern sofort frei oder sperrt sie.
+  beiFeldpruefung(el, () => aktualisiere());
   aktualisiere();
   return { kopf: { titel: 'Schnellkalkulation', untertitel: 'Preis in wenigen Eingaben', zurueck: '/home' }, el };
 }
