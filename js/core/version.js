@@ -11,8 +11,8 @@
  */
 
 export const APP_VERSION = {
-  code: 6,
-  name: '1.0.5',
+  code: 7,
+  name: '1.0.6',
 };
 
 /** Anzeigetext, z. B. "1.0.0 (1)". */
