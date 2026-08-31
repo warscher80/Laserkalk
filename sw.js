@@ -15,7 +15,7 @@
  * (tests/version.test.js) vergleicht die Kennung mit core/version.js.
  */
 
-const CACHE = 'laserkalk-1.0.5-6';
+const CACHE = 'laserkalk-1.1.0-7';
 
 const DATEIEN = [
   './', './index.html', './manifest.webmanifest',
