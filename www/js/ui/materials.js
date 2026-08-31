@@ -5,8 +5,7 @@
 
 import {
   h, card, field, text, num, money, select, seg, note, toast, icon, bestaetige, empty, leere,
-  entprellt,
-} from './components.js';
+  entprellt, formularFehler } from './components.js';
 import { store } from '../core/store.js';
 import { materialAbleiten, materialPruefen, materialLabel } from '../core/material.js';
 import { beispielMaterialien } from '../core/defaults.js';
@@ -238,7 +237,7 @@ function editor(ctx, id) {
     const aktiv = mat.preisQuelle === quelle;
     return h('.field', null,
       h('label', { text: label + (aktiv ? ' (Führungspreis)' : ' – berechnet') }),
-      money(wert, v => { setter(v); nach(); }, { einheit, disabled: !aktiv }),
+      money(wert, v => { setter(v); nach(); }, { einheit, regel: 'preis', disabled: !aktiv }),
     );
   };
 
@@ -253,15 +252,15 @@ function editor(ctx, id) {
       field('Werkstoff', text(mat.werkstoff, v => { mat.werkstoff = v; nach(); }, { placeholder: 'z. B. S235JR, 1.4301' })),
       h('.field.full', null, h('label', { text: 'Materialbezeichnung' }),
         text(mat.bezeichnung, v => { mat.bezeichnung = v; }, { placeholder: 'wird sonst automatisch gebildet' })),
-      field('Blechstärke', num(mat.dickeMm, v => { mat.dickeMm = v; nach(); }, { unit: 'mm' })),
-      field('Dichte', num(mat.dichte, v => { mat.dichte = v; nach(); }, { unit: 'kg/m³' }),
+      field('Blechstärke', num(mat.dickeMm, v => { mat.dickeMm = v; nach(); }, { unit: 'mm', regel: 'mass' })),
+      field('Dichte', num(mat.dichte, v => { mat.dichte = v; nach(); }, { unit: 'kg/m³', regel: 'dichte' }),
         'Standard der Gruppe: ' + (store.gruppe(mat.groupId)?.dichteStd ?? '—') + ' kg/m³'),
     )));
 
   el.appendChild(card('Tafelmaß',
     h('.grid', null,
-      field('Tafellänge', num(mat.tafelLaengeMm, v => { mat.tafelLaengeMm = v; nach(); }, { unit: 'mm' })),
-      field('Tafelbreite', num(mat.tafelBreiteMm, v => { mat.tafelBreiteMm = v; nach(); }, { unit: 'mm' })),
+      field('Tafellänge', num(mat.tafelLaengeMm, v => { mat.tafelLaengeMm = v; nach(); }, { unit: 'mm', regel: 'mass' })),
+      field('Tafelbreite', num(mat.tafelBreiteMm, v => { mat.tafelBreiteMm = v; nach(); }, { unit: 'mm', regel: 'mass' })),
     )));
 
   const preisBox = h('div');
@@ -304,6 +303,13 @@ function editor(ctx, id) {
     h('button.btn.primary', {
       text: 'Speichern',
       onclick: async () => {
+        // Ein rot markiertes Feld darf nicht in den Materialstamm wandern —
+        // von dort aus verfälschte es jede künftige Kalkulation.
+        const offen = formularFehler(el);
+        if (offen.fehler.length || offen.offen.length) {
+          toast('Bitte zuerst die markierten Felder berichtigen.', 'bad');
+          return;
+        }
         const f = materialPruefen(mat);
         if (f.length) { toast(f[0], 'bad'); return; }
         if (!mat.bezeichnung) mat.bezeichnung = materialLabel(mat);

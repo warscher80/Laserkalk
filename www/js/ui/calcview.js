@@ -8,7 +8,7 @@
 
 import {
   h, card, field, text, num, money, prozent, select, seg, switchRow, note, toast, icon,
-  sheet, res, entprellt, leere,
+  sheet, res, entprellt, leere, beiFeldpruefung, ergebnisSperre, formularFehler,
 } from './components.js';
 import { store } from '../core/store.js';
 import { berechne, neueKalkulation, neueZeit, pruefeKalkulation, staffel, METHODEN } from '../calc/engine.js';
@@ -81,6 +81,18 @@ export async function render(ctx, modus = 'voll') {
   /* ---------------- Live-Berechnung ---------------- */
 
   const aktualisiere = () => {
+    /*
+     * Erst die Felder, dann die Rechnung. Ein fehlerhaftes oder noch offenes
+     * Feld darf keinen Preis erzeugen — auch keinen, der zufällig plausibel
+     * aussieht, weil der Rechenkern intern einen Ersatzwert einsetzt.
+     */
+    if (!ergebnisSperre(wurzel, ergebnisBox, [])) {
+      leere(detailBox);
+      letztesErgebnis = null;
+      ctx.zeigePreis({ unsicher: true, unsicherGrund: 'Eingaben prüfen' });
+      ctx.setzeKopf(kopfBauen());
+      return;
+    }
     let r;
     try { r = berechne(calc); }
     catch (e) { console.error(e); toast('Berechnungsfehler: ' + e.message, 'bad'); return; }
@@ -129,10 +141,10 @@ export async function render(ctx, modus = 'voll') {
         oninput: e => { calc.datum = e.target.value; },
       })),
       field('Stückzahl', num(calc.stueckzahl, v => {
-        calc.stueckzahl = Math.max(1, Math.trunc(v) || 1);
+        calc.stueckzahl = v;
         aktualisiereSpaeter();
         strukturSpaeter();
-      }, { unit: 'Stk' })),
+      }, { unit: 'Stk', regel: 'stueckzahl' }), 'Ganze Zahl, mindestens 1.'),
       h('.field', null, h('label', { text: 'Interne Notiz' }),
         text(calc.notiz, v => { calc.notiz = v; }, { placeholder: 'nur intern sichtbar' })),
     ),
@@ -187,24 +199,24 @@ export async function render(ctx, modus = 'voll') {
     switch (v.methode) {
       case 'rechteck':
         eingabe.appendChild(h('.grid', null,
-          field('Länge', num(v.laengeMm, x => { v.laengeMm = Math.max(0, x); aktualisiereSpaeter(); }, { unit: 'mm' })),
-          field('Breite', num(v.breiteMm, x => { v.breiteMm = Math.max(0, x); aktualisiereSpaeter(); }, { unit: 'mm' })),
+          field('Länge', num(v.laengeMm, x => { v.laengeMm = x; aktualisiereSpaeter(); }, { unit: 'mm', regel: 'mass' })),
+          field('Breite', num(v.breiteMm, x => { v.breiteMm = x; aktualisiereSpaeter(); }, { unit: 'mm', regel: 'mass' })),
         ));
         break;
       case 'flaeche':
-        eingabe.appendChild(field('Fläche', num(v.flaecheM2, x => { v.flaecheM2 = Math.max(0, x); aktualisiereSpaeter(); }, { unit: 'm²' })));
+        eingabe.appendChild(field('Fläche', num(v.flaecheM2, x => { v.flaecheM2 = x; aktualisiereSpaeter(); }, { unit: 'm²', regel: 'mass' })));
         break;
       case 'gewicht':
-        eingabe.appendChild(field('Gewicht', num(v.gewichtKg, x => { v.gewichtKg = Math.max(0, x); aktualisiereSpaeter(); }, { unit: 'kg' }),
+        eingabe.appendChild(field('Gewicht', num(v.gewichtKg, x => { v.gewichtKg = x; aktualisiereSpaeter(); }, { unit: 'kg', regel: 'mass' }),
           mat?.ekProKgCent > 0 ? `Preis je kg: ${eur(mat.ekProKgCent)}` : 'Achtung: kein Preis je kg im Material hinterlegt.',
           mat?.ekProKgCent > 0 ? '' : 'warn'));
         break;
       case 'tafeln':
-        eingabe.appendChild(field('Anzahl Tafeln', num(v.tafeln, x => { v.tafeln = Math.max(0, x); aktualisiereSpaeter(); }, { unit: 'Tafeln' }),
+        eingabe.appendChild(field('Anzahl Tafeln', num(v.tafeln, x => { v.tafeln = x; aktualisiereSpaeter(); }, { unit: 'Tafeln', regel: 'mass' }),
           mat?.tafelLaengeMm > 0 ? `Tafel ${fmtNum(mat.tafelLaengeMm, 0)} × ${fmtNum(mat.tafelBreiteMm, 0)} mm · ${eur(mat.ekTafelCent || 0)}` : 'Kein Tafelmaß im Material hinterlegt.'));
         break;
       case 'kosten':
-        eingabe.appendChild(field('Materialkosten (Einkauf)', money(v.kostenCent, x => { v.kostenCent = x; aktualisiereSpaeter(); })));
+        eingabe.appendChild(field('Materialkosten (Einkauf)', money(v.kostenCent, x => { v.kostenCent = x; aktualisiereSpaeter(); }, { regel: 'preis' })));
         break;
       case 'dxf':
         eingabe.appendChild(note('info', 'Die Materialfläche kommt aus der DXF-Analyse. Die Auswahl der Flächenbasis steht in der DXF-Karte.'));
@@ -223,9 +235,9 @@ export async function render(ctx, modus = 'voll') {
       h('.field', null, h('label', { text: 'Verschnitt' }),
         seg([0, 500, 1000, 1500, 2000, 2500].map(b => [b, (b / 100) + ' %']), calc.verschnittBp,
           (nv) => { calc.verschnittBp = Number(nv); zeichneMaterial(); aktualisiere(); }, 'small wrap'),
-        h('div.mt', null, prozent(calc.verschnittBp, x => { calc.verschnittBp = x; aktualisiereSpaeter(); })),
+        h('div.mt', null, prozent(calc.verschnittBp, x => { calc.verschnittBp = x; aktualisiereSpaeter(); }, { regel: 'prozentVerschnitt' })),
         h('.hint', { text: `Standard aus den Einstellungen: ${pct(settings.verschnittBp)}` })),
-      field('Materialaufschlag', prozent(calc.materialAufschlagBp, x => { calc.materialAufschlagBp = x; aktualisiereSpaeter(); }),
+      field('Materialaufschlag', prozent(calc.materialAufschlagBp, x => { calc.materialAufschlagBp = x; aktualisiereSpaeter(); }, { regel: 'prozentAufschlag' }),
         `Standard: ${pct(settings.materialAufschlagBp)}`),
     ));
 
@@ -337,11 +349,11 @@ export async function render(ctx, modus = 'voll') {
       }) : null;
 
       const zeitFeld = num(z.minuten, v => {
-        z.minuten = Math.max(0, v);
+        z.minuten = v;
         if (istLaser) z.quelle = 'manuell';
         auffrischen();
         aktualisiereSpaeter();
-      }, { unit: 'min' });
+      }, { unit: 'min', regel: 'zeit' });
       const zeitInput = zeitFeld.querySelector ? zeitFeld.querySelector('input') : zeitFeld;
 
       /**
@@ -399,7 +411,7 @@ export async function render(ctx, modus = 'voll') {
         ),
         h('.grid', null,
           field('Zeit', zeitFeld),
-          field('Stundensatz', money(z.satzCent, v => { z.satzCent = v; auffrischen(); aktualisiereSpaeter(); }, { einheit: '€/h' })),
+          field('Stundensatz', money(z.satzCent, v => { z.satzCent = v; auffrischen(); aktualisiereSpaeter(); }, { einheit: '€/h', regel: 'satz' })),
         ),
         seg(MODI, z.modus, (v) => { z.modus = v; auffrischen(); aktualisiere(); }, 'small'),
         minutenAnzeige,
@@ -461,7 +473,7 @@ export async function render(ctx, modus = 'voll') {
     if (g.modus !== 'inklusive') {
       inhalt.appendChild(h('.grid', null,
         field('Preis', money(g.preisCent, v => { g.preisCent = v; aktualisiereSpaeter(); },
-          { einheit: g.modus === 'proStunde' ? '€/h' : g.modus === 'proMinute' ? '€/min' : '€' })),
+          { einheit: g.modus === 'proStunde' ? '€/h' : g.modus === 'proMinute' ? '€/min' : '€', regel: 'preis' })),
         g.modus === 'pauschal'
           ? h('.field', null, h('label', { text: 'Pauschale gilt' }),
               seg([['ges', 'je Auftrag'], ['stk', 'je Stück']], g.proStueck ? 'stk' : 'ges',
@@ -500,9 +512,9 @@ export async function render(ctx, modus = 'voll') {
           h('button.iconbtn.bad', { 'aria-label': 'Position entfernen', onclick: () => { calc.zusatz.splice(i, 1); zeichneZusatz(); aktualisiere(); } }, icon('x', 16)),
         ),
         h('.grid.g3', null,
-          field('Menge', num(z.menge, v => { z.menge = v; nach(); aktualisiereSpaeter(); })),
+          field('Menge', num(z.menge, v => { z.menge = v; nach(); aktualisiereSpaeter(); }, { regel: 'menge' })),
           field('Einheit', text(z.einheit, v => { z.einheit = v; }, { placeholder: 'Stk' })),
-          field('Einzelpreis', money(z.einzelpreisCent, v => { z.einzelpreisCent = v; nach(); aktualisiereSpaeter(); })),
+          field('Einzelpreis', money(z.einzelpreisCent, v => { z.einzelpreisCent = v; nach(); aktualisiereSpaeter(); }, { regel: 'betrag' })),
         ),
         seg([['einmalig', 'je Auftrag'], ['proStueck', 'je Stück']], z.modus, v => { z.modus = v; nach(); aktualisiere(); }, 'small'),
       ));
@@ -530,16 +542,16 @@ export async function render(ctx, modus = 'voll') {
       v => { calc.gewinnAktiv = v; zeichnePreisbildung(); aktualisiere(); },
       'Aus, wenn die Stundensätze bereits Verkaufspreise enthalten'));
     if (calc.gewinnAktiv) {
-      inhalt.appendChild(field('Gewinnaufschlag', prozent(calc.gewinnBp, v => { calc.gewinnBp = v; aktualisiereSpaeter(); }), `Standard: ${pct(settings.gewinnBp)}`));
+      inhalt.appendChild(field('Gewinnaufschlag', prozent(calc.gewinnBp, v => { calc.gewinnBp = v; aktualisiereSpaeter(); }, { regel: 'prozentAufschlag' }), `Standard: ${pct(settings.gewinnBp)}`));
     }
 
     inhalt.appendChild(switchRow('Mindestauftragswert anwenden', calc.mindestwertAktiv,
       v => { calc.mindestwertAktiv = v; zeichnePreisbildung(); aktualisiere(); }));
     if (calc.mindestwertAktiv) {
-      inhalt.appendChild(field('Mindestauftragswert (netto)', money(calc.mindestwertCent, v => { calc.mindestwertCent = v; aktualisiereSpaeter(); })));
+      inhalt.appendChild(field('Mindestauftragswert (netto)', money(calc.mindestwertCent, v => { calc.mindestwertCent = v; aktualisiereSpaeter(); }, { regel: 'preis' })));
     }
 
-    inhalt.appendChild(field('Mehrwertsteuer', prozent(calc.mwstBp, v => { calc.mwstBp = v; aktualisiereSpaeter(); })));
+    inhalt.appendChild(field('Mehrwertsteuer', prozent(calc.mwstBp, v => { calc.mwstBp = v; aktualisiereSpaeter(); }, { regel: 'prozentMwst' })));
     preisBox.appendChild(card('Preisbildung', inhalt));
   }
 
@@ -642,6 +654,13 @@ export async function render(ctx, modus = 'voll') {
   /* ---------------- Speichern ---------------- */
 
   async function speichern() {
+    // Zweiter Riegel: was nicht rechenbar ist, wird auch nicht gespeichert.
+    const offen = formularFehler(wurzel);
+    if (offen.fehler.length || offen.offen.length) {
+      toast('Bitte zuerst die markierten Eingaben berichtigen.', 'bad');
+      ergebnisSperre(wurzel, ergebnisBox, []);
+      return;
+    }
     const p = pruefeKalkulation(calc);
     if (p.fehler.length) { toast(p.fehler[0], 'bad'); return; }
     const zuSpeichern = { ...calc, dxf: dxfFuerSpeicher(calc.dxf) };
@@ -696,6 +715,7 @@ export async function render(ctx, modus = 'voll') {
   wurzel.appendChild(detailBox);
 
   if (istNeu) autoLaser(false);
+  beiFeldpruefung(wurzel, () => aktualisiere());
   aktualisiere();
 
   if (modus === 'dxf' && !calc.dxf) setTimeout(() => dxfBox._dateiWaehlen(), 260);

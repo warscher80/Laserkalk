@@ -4,7 +4,8 @@
  * übersichtlicher (und schneller) ist als eine Abstraktionsschicht.
  */
 
-import { parseNum, toCent, centStr, toBp, bpToPct, pruefeZahl } from '../core/money.js';
+import { parseNum, toCent, centStr, toBp, bpToPct } from '../core/money.js';
+import { pruefeFeld, REGELN } from '../core/felder.js';
 
 /** Mini-Hyperscript: h('div.card', {onclick}, kind1, kind2) */
 export function h(sel, props = null, ...kinder) {
@@ -96,13 +97,115 @@ const ICONS = {
 
 /* ---------------- Formularbausteine ---------------- */
 
-/** Beschriftetes Feld mit optionalem Hinweis. */
+/*
+ * BARRIEREFREIHEIT DER FORMULARE
+ *
+ * Jedes Eingabefeld bekommt eine eigene ID, eine echte <label for="…">
+ * Beschriftung und über aria-describedby die Einheit, den Hilfetext und —
+ * falls vorhanden — die Fehlermeldung. Vorher hingen die Beschriftungen nur
+ * optisch daneben; ein Screenreader las „Eingabefeld, leer" und sonst nichts.
+ */
+
+let idZaehler = 0;
+/** Eindeutige, stabile ID innerhalb einer Seite. */
+export function feldId(praefix = 'f') { return `${praefix}-${++idZaehler}`; }
+
+/** Fügt eine ID zur Beschreibungsliste eines Feldes hinzu (ohne Dubletten). */
+function beschreibe(inp, id) {
+  if (!inp || !id) return;
+  const liste = (inp.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+  if (!liste.includes(id)) { liste.push(id); inp.setAttribute('aria-describedby', liste.join(' ')); }
+}
+function beschreibungWeg(inp, id) {
+  if (!inp || !id) return;
+  const liste = (inp.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean).filter(x => x !== id);
+  if (liste.length) inp.setAttribute('aria-describedby', liste.join(' '));
+  else inp.removeAttribute('aria-describedby');
+}
+
+/** Das eigentliche Bedienelement in einem (evtl. verpackten) Steuerelement. */
+function steuerelement(control) {
+  if (!control || !control.tagName) return null;
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(control.tagName)) return control;
+  return control.querySelector ? control.querySelector('input, select, textarea') : null;
+}
+
+/**
+ * Beschriftetes Feld mit optionalem Hinweis.
+ * Verbindet Beschriftung, Einheit und Hilfetext mit dem Bedienelement.
+ */
 export function field(label, control, hint, hintKlasse = '') {
-  return h('.field', null,
-    label ? h('label', { text: label }) : null,
-    control,
-    hint ? h('.hint' + (hintKlasse ? '.' + hintKlasse : ''), { text: hint }) : null,
-  );
+  const inp = steuerelement(control);
+  if (inp && !inp.id) inp.id = feldId('feld');
+
+  const box = h('.field');
+  if (label) {
+    const lb = h('label', { text: label });
+    if (inp) lb.setAttribute('for', inp.id);
+    box.appendChild(lb);
+  }
+  box.appendChild(control);
+
+  // Die Einheit gehört mit vorgelesen: „70 … Euro pro Stunde".
+  if (inp && control && control.classList && control.classList.contains('unit')) {
+    const u = control.querySelector('.u');
+    if (u) { if (!u.id) u.id = feldId('einheit'); beschreibe(inp, u.id); }
+  }
+  if (hint) {
+    const hl = h('.hint' + (hintKlasse ? '.' + hintKlasse : ''), { text: hint, id: feldId('hinweis') });
+    box.appendChild(hl);
+    beschreibe(inp, hl.id);
+  }
+  return box;
+}
+
+/**
+ * Sicherheitsnetz für Beschriftungen.
+ *
+ * Die meisten Felder entstehen über `field()` und sind damit sauber verknüpft.
+ * An einigen Stellen ist ein `.field`-Block aber von Hand gebaut (weil er
+ * mehrere Bedienelemente enthält). Dort blieben Beschriftung und Feld nur
+ * optisch nebeneinander — ein Screenreader las „Eingabefeld, leer".
+ *
+ * Diese Funktion läuft einmal nach jedem Zeichnen über die fertige Ansicht und
+ * verbindet, was noch offen ist: label ↔ Feld, Einheit und Hinweis als
+ * Beschreibung. Sie ändert nichts, was bereits verknüpft ist.
+ */
+export function beschriftungenVerknuepfen(wurzel) {
+  if (!wurzel || !wurzel.querySelectorAll) return 0;
+  let ergaenzt = 0;
+  for (const block of wurzel.querySelectorAll('.field')) {
+    const felder = [...block.querySelectorAll('input, select, textarea')]
+      .filter(f => f.type !== 'hidden');
+    if (!felder.length) continue;
+    const lb = block.querySelector(':scope > label');
+
+    for (const f of felder) {
+      if (!f.id) { f.id = feldId('feld'); ergaenzt++; }
+    }
+    // Ein label gehört genau zu EINEM Feld. Enthält der Block mehrere,
+    // bekommen die übrigen den Text als aria-label.
+    if (lb) {
+      if (!lb.getAttribute('for')) { lb.setAttribute('for', felder[0].id); ergaenzt++; }
+      for (const f of felder.slice(1)) {
+        if (!f.getAttribute('aria-label') && !f.getAttribute('aria-labelledby')) {
+          f.setAttribute('aria-label', lb.textContent.trim());
+          ergaenzt++;
+        }
+      }
+    }
+    // Einheit und Hilfetext anhängen, sofern noch nicht geschehen.
+    for (const f of felder) {
+      const einheit = f.closest('.unit')?.querySelector('.u');
+      if (einheit) { if (!einheit.id) einheit.id = feldId('einheit'); beschreibe(f, einheit.id); }
+    }
+    for (const hinweis of block.querySelectorAll(':scope > .hint')) {
+      if (!hinweis.textContent.trim()) continue;
+      if (!hinweis.id) hinweis.id = feldId('hinweis');
+      beschreibe(felder[0], hinweis.id);
+    }
+  }
+  return ergaenzt;
 }
 
 /** Textfeld. */
@@ -118,83 +221,229 @@ export function text(value, onInput, props = {}) {
  * Ohne Grund wird die Meldung wieder entfernt.
  *
  * Wichtig: Ein ungültiger Eintrag ändert den gespeicherten Wert NICHT.
- * Ein vertippter Preis darf nicht stillschweigend zu 0 werden (§41).
+ * Weder ein vertippter Preis noch eine 0 als Stückzahl darf stillschweigend
+ * durch einen Ersatzwert ersetzt werden (§41).
  */
 function ungueltig(inp, grund) {
   const box = inp.closest('.unit') || inp;
   const traeger = box.parentElement || box;
   let meldung = traeger.querySelector(':scope > .hint.feldfehler');
+  const vorher = inp.getAttribute('aria-invalid') === 'true';
+
   if (grund) {
     inp.setAttribute('aria-invalid', 'true');
     inp.classList.add('ungueltig');
     if (!meldung) {
-      meldung = h('.hint.bad.feldfehler');
+      meldung = h('.hint.bad.feldfehler', { id: feldId('fehler'), role: 'alert' });
       box.insertAdjacentElement('afterend', meldung);
     }
     meldung.textContent = grund;
+    beschreibe(inp, meldung.id);
   } else {
     inp.removeAttribute('aria-invalid');
     inp.classList.remove('ungueltig');
-    if (meldung) meldung.remove();
+    if (meldung) { beschreibungWeg(inp, meldung.id); meldung.remove(); }
+  }
+  if (vorher !== !!grund) {
+    // Die Ansicht darf daraufhin Ergebnis und Speichern sperren bzw. freigeben.
+    inp.dispatchEvent(new CustomEvent('feld-geprueft', { bubbles: true, detail: { gueltig: !grund } }));
   }
 }
 
 /**
- * Gemeinsames Verhalten aller Zahlenfelder: prüfen statt raten.
- * @param {HTMLInputElement} inp
- * @param {string} einheit   erwartete Einheit für mitkopierte Werte
- * @param {(wert:number, roh:string)=>void} uebernehmen
- * @param {(wert:number)=>string} anzeige   Formatierung beim Verlassen
+ * Kennzeichnet ein Feld als NOCH NICHT AUSGEFÜLLT.
+ *
+ * Unterschied zu `ungueltig`: Hier hat der Benutzer nichts falsch gemacht, er
+ * ist nur noch nicht fertig. Deshalb gelb statt rot und KEIN aria-invalid —
+ * eine leere Pflichtangabe ist keine fehlerhafte Eingabe. Das Ergebnis wird
+ * trotzdem gesperrt, denn rechnen lässt sich damit nicht.
  */
-function zahlenfeld(inp, einheit, uebernehmen, anzeige) {
+function unvollstaendig(inp, grund) {
+  const box = inp.closest('.unit') || inp;
+  const traeger = box.parentElement || box;
+  let meldung = traeger.querySelector(':scope > .hint.feldoffen');
+  const vorher = inp.classList.contains('unvollstaendig');
+  if (grund) {
+    inp.classList.add('unvollstaendig');
+    if (!meldung) {
+      meldung = h('.hint.warn.feldoffen', { id: feldId('offen') });
+      box.insertAdjacentElement('afterend', meldung);
+    }
+    meldung.textContent = grund;
+    beschreibe(inp, meldung.id);
+  } else {
+    inp.classList.remove('unvollstaendig');
+    if (meldung) { beschreibungWeg(inp, meldung.id); meldung.remove(); }
+  }
+  if (vorher !== !!grund) {
+    inp.dispatchEvent(new CustomEvent('feld-geprueft', { bubbles: true, detail: { gueltig: !grund } }));
+  }
+}
+
+/**
+ * Felder, die einer Berechnung im Weg stehen: fehlerhaft ODER noch offen.
+ * @returns {{fehler: HTMLElement[], offen: HTMLElement[]}}
+ */
+export function formularFehler(wurzel) {
+  if (!wurzel || !wurzel.querySelectorAll) return { fehler: [], offen: [] };
+  return {
+    fehler: [...wurzel.querySelectorAll('[aria-invalid="true"]')],
+    offen: [...wurzel.querySelectorAll('.unvollstaendig')],
+  };
+}
+
+/** Kurzfassung: darf aus diesem Bereich ein Preis entstehen? */
+export function formularGueltig(wurzel) {
+  const f = formularFehler(wurzel);
+  return f.fehler.length === 0 && f.offen.length === 0;
+}
+
+/**
+ * „Speichern" für einen Dialog: schließt erst, wenn alle Felder darin in
+ * Ordnung sind. Ein Schnittparameter mit Geschwindigkeit 0 oder ein Blech mit
+ * Stärke 0 darf nicht in den Stammdaten landen — von dort verfälschte er
+ * später jede Kalkulation, ohne dass jemand die Ursache sieht.
+ */
+export function dialogSpeichern(schliessen, beschriftung = 'Speichern') {
+  return h('button.btn.primary', {
+    text: beschriftung,
+    onclick: (e) => {
+      const wurzel = e.target.closest('.sheet') || e.target.parentElement;
+      const { fehler, offen } = formularFehler(wurzel);
+      if (fehler.length || offen.length) {
+        const namen = [...new Set([...fehler, ...offen].map(feldName))].join(', ');
+        toast(`Bitte zuerst berichtigen: ${namen}.`, 'bad');
+        return;
+      }
+      schliessen(true);
+    },
+  });
+}
+
+/** Beschriftung eines Feldes, für Sammelmeldungen im Ergebnisbereich. */
+export function feldName(inp) {
+  // Bewusst über getRootNode() statt document: beim ersten Zeichnen hängt die
+  // Ansicht noch nicht im Dokument, und document.querySelector fände nichts —
+  // dann stünde im Ergebnisbereich „Es fehlt noch: Feld".
+  const wurzel = inp.getRootNode ? inp.getRootNode() : document;
+  const lb = inp.id && wurzel.querySelector ? wurzel.querySelector(`label[for="${CSS.escape(inp.id)}"]`) : null;
+  return (lb ? lb.textContent.trim() : '') || inp.getAttribute('aria-label') || 'Feld';
+}
+
+/**
+ * Ruft `fn` bei jeder Änderung des Prüfzustands in diesem Bereich auf.
+ * Zusätzlich einmal sofort, damit der Anfangszustand stimmt.
+ */
+export function beiFeldpruefung(wurzel, fn) {
+  wurzel.addEventListener('feld-geprueft', () => fn(formularFehler(wurzel)));
+  fn(formularFehler(wurzel));
+}
+
+/**
+ * Sperrt Ergebnis und Schaltflächen, solange Felder fehlerhaft oder offen
+ * sind, und nennt konkret, welche. Gibt zurück, ob gerechnet werden darf.
+ *
+ * @param {HTMLElement} wurzel     Bereich mit den Feldern
+ * @param {HTMLElement} anzeigeBox Ergebnisbereich
+ * @param {HTMLElement[]} knoepfe  Schaltflächen, die gesperrt werden
+ */
+export function ergebnisSperre(wurzel, anzeigeBox, knoepfe = []) {
+  const { fehler, offen } = formularFehler(wurzel);
+  const namen = (liste) => [...new Set(liste.map(feldName))].join(', ');
+  const gueltig = !fehler.length && !offen.length;
+
+  for (const b of knoepfe) if (b) { b.disabled = !gueltig; b.setAttribute('aria-disabled', String(!gueltig)); }
+  if (gueltig) return true;
+
+  leere(anzeigeBox);
+  anzeigeBox.appendChild(h('.pruefhinweis', { role: 'status' },
+    h('.ph-titel', { text: 'Eingaben prüfen' }),
+    fehler.length ? h('p', { text: `Fehlerhaft: ${namen(fehler)}. Bitte oben die rot markierten Felder berichtigen.` }) : null,
+    offen.length ? h('p', { text: `Es fehlt noch: ${namen(offen)}.` }) : null,
+    h('p.ph-fuss', { text: 'Solange wird kein Preis angezeigt — ein Preis aus unvollständigen Angaben wäre nicht belastbar.' }),
+  ));
+  return false;
+}
+
+/**
+ * Gemeinsames Verhalten aller Zahlenfelder: prüfen statt raten.
+ *
+ * @param {HTMLInputElement} inp
+ * @param {object} opts  { einheit, regel, pflicht }
+ * @param {(p:object)=>void} uebernehmen  nur bei GÜLTIGER Eingabe
+ * @param {(p:object)=>string} anzeige    Formatierung beim Verlassen
+ */
+function zahlenfeld(inp, opts, uebernehmen, anzeige) {
   let letzterGueltiger = null;
+  const pruefe = () => pruefeFeld(inp.value, opts);
+
   inp.addEventListener('input', () => {
-    const p = pruefeZahl(inp.value, { einheit });
+    const p = pruefe();
+    unvollstaendig(inp, '');   // ab jetzt hat der Benutzer angefasst
     if (!p.ok) { ungueltig(inp, p.grund); return; }
     ungueltig(inp, '');
     letzterGueltiger = p;
     uebernehmen(p);
   });
   inp.addEventListener('blur', () => {
-    const p = pruefeZahl(inp.value, { einheit });
+    const p = pruefe();
     if (p.ok) {
       ungueltig(inp, '');
       inp.value = anzeige(p);
-    } else if (letzterGueltiger) {
-      // Zurück auf den letzten gültigen Wert – NICHT auf 0.
-      ungueltig(inp, '');
-      inp.value = anzeige(letzterGueltiger);
-      uebernehmen(letzterGueltiger);
     }
-    // Sonst stehen lassen: der Benutzer sieht seine Eingabe und die Begründung.
+    // Bei ungültiger Eingabe bleibt sie STEHEN, samt Begründung. Sie
+    // wegzuräumen würde den Fehler verstecken, und der Benutzer bekäme
+    // wieder einen Preis zu sehen, der nicht zu dem passt, was er eingab.
   });
+
+  // Anfangszustand prüfen. Zwei verschiedene Fälle:
+  //  - Feld noch leer oder 0, obwohl ein Wert gebraucht wird  → offen (gelb)
+  //  - gespeicherter Unsinn aus einer alten Kalkulation       → Fehler (rot)
+  const start = pruefe();
+  if (!start.ok) {
+    const nochNichtsEingetragen = inp.value.trim() === '' || inp.value.trim() === '0';
+    if (nochNichtsEingetragen) unvollstaendig(inp, 'Dieser Wert wird für die Berechnung gebraucht.');
+    else ungueltig(inp, start.grund);
+  }
   return inp;
 }
 
-/** Zahlenfeld mit deutscher Eingabe. Gibt bei jeder Eingabe die Zahl zurück. */
+/** Ganzzahlfelder bekommen die Zifferntastatur, alles andere die Dezimaltastatur. */
+function tastatur(regel) {
+  const r = REGELN[regel];
+  return r && r.ganz ? 'numeric' : 'decimal';
+}
+
+/**
+ * Zahlenfeld mit deutscher Eingabe.
+ * @param {object} props  unit, regel, pflicht, leerBei0, id, …
+ */
 export function num(value, onInput, props = {}) {
-  const { unit, ...rest } = props;
+  const { unit, regel = '', pflicht = false, leerBei0, ...rest } = props;
   const inp = h('input', {
-    type: 'text', inputmode: 'decimal', autocomplete: 'off',
-    value: value === 0 && props.leerBei0 ? '' : formatEingabe(value),
+    type: 'text', inputmode: tastatur(regel), autocomplete: 'off',
+    value: value === 0 && leerBei0 ? '' : formatEingabe(value),
     ...rest,
   });
-  zahlenfeld(inp, unit || '', (p) => onInput(p.wert, inp.value),
-    (p) => (p.wert === 0 && props.leerBei0 ? '' : formatEingabe(p.wert)));
+  if (!inp.id) inp.id = feldId('zahl');
+  zahlenfeld(inp, { einheit: unit || '', regel, pflicht },
+    (p) => onInput(p.wert, inp.value),
+    (p) => (p.wert === 0 && leerBei0 ? '' : formatEingabe(p.wert)));
   return unit ? h('.unit', null, inp, h('span.u', { text: unit })) : inp;
 }
 
 /** Geldfeld: zeigt Euro, liefert Cent. */
 export function money(cent, onInput, props = {}) {
-  const { einheit, ...rest } = props;
+  const { einheit, regel = 'preis', pflicht = false, ...rest } = props;
   const inp = h('input', {
     type: 'text', inputmode: 'decimal', autocomplete: 'off',
     value: cent ? centStr(cent) : '',
     placeholder: '0,00',
     ...rest,
   });
+  if (!inp.id) inp.id = feldId('geld');
   // Der Cent-Wert entsteht aus den ZIFFERN, nicht aus der Gleitkommazahl (§42).
-  zahlenfeld(inp, einheit || '€',
+  zahlenfeld(inp, { einheit: einheit || '€', regel, pflicht },
     (p) => onInput(toCent(p.text, 0)),
     (p) => { const c = toCent(p.text, 0); return c ? centStr(c) : ''; });
   return h('.unit', null, inp, h('span.u', { text: einheit || '€' }));
@@ -202,11 +451,13 @@ export function money(cent, onInput, props = {}) {
 
 /** Prozentfeld: zeigt Prozent, liefert Basispunkte. */
 export function prozent(bp, onInput, props = {}) {
+  const { regel = 'prozentAufschlag', pflicht = false, ...rest } = props;
   const inp = h('input', {
     type: 'text', inputmode: 'decimal', autocomplete: 'off',
-    value: fmtPct(bp), ...props,
+    value: fmtPct(bp), ...rest,
   });
-  zahlenfeld(inp, '%',
+  if (!inp.id) inp.id = feldId('prozent');
+  zahlenfeld(inp, { einheit: '%', regel, pflicht },
     (p) => onInput(toBp(p.text, 0)),
     (p) => fmtPct(toBp(p.text, 0)));
   return h('.unit', null, inp, h('span.u', { text: '%' }));
@@ -338,6 +589,8 @@ export function sheet(titel, bauInhalt, opts = {}) {
     const inhalt = bauInhalt(schliessen);
     anhaengen(box, [inhalt]);
     root.appendChild(box);
+    // Auch in Dialogen müssen Beschriftung und Feld verbunden sein.
+    beschriftungenVerknuepfen(box);
     root.classList.add('on');
     document.body.style.overflow = 'hidden';
     if (opts.klickAussenSchliesst !== false) root.onclick = () => schliessen(undefined);

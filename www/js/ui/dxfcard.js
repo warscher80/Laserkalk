@@ -290,8 +290,9 @@ export function dxfKarte(o) {
           ),
           d.bauteilModus === 'gesamt'
             ? h('div', { style: { width: '86px', flex: '0 0 auto' } },
-                num(b.stueckzahl ?? 1, (v) => { b.stueckzahl = Math.max(0, Math.trunc(v)); aggregiere(d); o.aufNeuBerechnen(); },
-                  { unit: '×', onclick: e => e.stopPropagation() }))
+                num(b.stueckzahl ?? 1, (v) => { b.stueckzahl = v; aggregiere(d); o.aufNeuBerechnen(); },
+                  { unit: '×', regel: 'anzahl', 'aria-label': `Stückzahl Bauteil ${b.nr}`,
+                    onclick: e => e.stopPropagation() }))
             : h('.ir', null, h('.v', { text: fmtNum(b.nettoFlaecheMm2 / 1_000_000, 4) }), h('.s', { text: 'm²' })),
         ));
       }
@@ -309,31 +310,32 @@ export function dxfKarte(o) {
     ));
     if (d.flaechenBasis === 'manuell') {
       inhaltEl.appendChild(field('Materialfläche je Stück',
-        num(d.manuelleFlaecheM2, (v) => { d.manuelleFlaecheM2 = Math.max(0, v); o.aufNeuBerechnen(); }, { unit: 'm²' })));
+        num(d.manuelleFlaecheM2, (v) => { d.manuelleFlaecheM2 = v; o.aufNeuBerechnen(); }, { unit: 'm²', regel: 'mass' })));
     }
     if (d.flaechenBasis === 'nesting') {
       inhaltEl.appendChild(note('info', `Aus dem Rechteck-Nesting (Bounding Box, 0°/90°): ${fmtNum(d.nestingFlaecheProStueckM2, 5)} m² je Stück. Echtes Form-Nesting kann mehr Teile unterbringen.`));
     }
 
     /* --- Manuelle Korrekturen (§11: automatische Werte müssen korrigierbar sein) --- */
-    const korrFeld = (label, schluessel, wert, setzen, unit) => {
-      const f = field(label, num(wert, (v) => { setzen(v); o.aufNeuBerechnen(); }, unit ? { unit } : {}), ' ');
+    const korrFeld = (label, schluessel, wert, setzen, unit, regel = 'massOptional') => {
+      const f = field(label, num(wert, (v) => { setzen(v); o.aufNeuBerechnen(); },
+        unit ? { unit, regel } : { regel }), ' ');
       anzeige.hinweise[schluessel] = f.querySelector('.hint');
       return f;
     };
     inhaltEl.appendChild(h('.grid.g3.mt', null,
       korrFeld('Nettofläche', 'netto', d.nettoFlaecheM2, (v) => {
-        d.nettoFlaecheM2 = Math.max(0, v);
+        d.nettoFlaecheM2 = v;
         d.nettoManuell = Math.abs(v - (d.autoNettoFlaecheM2 || 0)) > 1e-9;
       }, 'm²'),
       korrFeld('Schnittlänge', 'laenge', d.schnittlaengeMm, (v) => {
-        d.schnittlaengeMm = Math.max(0, v);
+        d.schnittlaengeMm = v;
         d.laengeManuell = Math.abs(v - (d.autoSchnittlaengeMm || 0)) > 1e-6;
       }, 'mm'),
       korrFeld('Einstiche', 'einstiche', d.einstiche, (v) => {
-        d.einstiche = Math.max(0, Math.trunc(v));
+        d.einstiche = v;
         d.einsticheManuell = d.einstiche !== d.autoEinstiche;
-      }),
+      }, '', 'anzahl'),
     ));
     werteSchreiben();
 

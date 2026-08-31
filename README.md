@@ -119,10 +119,11 @@ App-ID und kann dafür **nicht** verwendet werden. Der Keystore und
 ## Tests
 
 ```bash
-node --test tests/*.test.js      # im Ordner laserkalk/
+node --test tests/*.test.js      # im Ordner laserkalk/  (= npm test)
+npm run test:browser             # zusätzlich im echten Browser, braucht Playwright
 ```
 
-**189 Tests** über Geldrechnung, Eingabeprüfung, Kalkulationskern,
+**209 Tests** über Geldrechnung, Eingabeprüfung, Kalkulationskern,
 Materialableitung, Laserzeit, DXF-Parser und -Geometrie, Nesting,
 Maschinenkalkulation, Backup/Wiederherstellung, CSV und Update-Prüfung.
 Sie laufen ohne Browser, weil Logik und Oberfläche getrennt sind.
@@ -135,6 +136,8 @@ Verankert sind unter anderem:
 | `dxf-referenz.test.js` | 20 erzeugte Referenz-DXF mit von Hand hergeleiteten Sollwerten |
 | `laserzeit.test.js` | Einheiten und Randfälle der Zeitschätzung, Auswahl der Schnittparameter |
 | `eingaben.test.js` | Zahlenformate, mitkopierte Einheiten, abgelehnter Unsinn |
+| `validierung.test.js` | Fachliche Wertebereiche: Stückzahl, Zeiten, Preise, Maße, Prozente — und dass eine ungültige Eingabe **keinen** Ersatzwert liefert |
+| `oberflaeche.browser.mjs` | Verhalten im Browser: Meldung am Feld, `aria-invalid`, gesperrtes Ergebnis, gesperrtes Speichern (38 Prüfungen) |
 | `io.test.js` | Backup-Prüfung, atomare Wiederherstellung |
 | `update.test.js` | Version, Gradle-Datei, Service-Worker-Cache und Dateiliste dürfen nicht auseinanderlaufen |
 
@@ -239,6 +242,12 @@ Abhängigkeiten (eigener Rasterizer + PNG-Encoder über `node:zlib`).
 - **Geld ist immer ganzzahlig in Cent.** Es gibt keinen Gleitkomma-Euro im
   System; Prozente laufen über Basispunkte. Jede Position wird gerundet und
   dann summiert, damit die Detailaufstellung exakt zur Summe passt.
+- **Ungültige Eingaben werden nicht ersetzt.** Eine 0 als Stückzahl oder eine
+  negative Zeit wird abgelehnt, nicht stillschweigend zu 1 bzw. 0 gemacht. Das
+  Feld wird rot markiert, die Begründung steht daneben (und ist über
+  `aria-describedby` verbunden), das Ergebnis zeigt „Eingaben prüfen" statt
+  eines Preises, und Speichern ist gesperrt. Erst nach der Berichtigung wird
+  wieder gerechnet.
 - **Bei DXF wird nicht geraten.** Unklare Einheiten müssen bestätigt werden,
   offene Konturen, doppelte Linien und zu kurze Segmente werden gemeldet, und
   jeder automatisch ermittelte Wert (Fläche, Schnittlänge, Einstiche,

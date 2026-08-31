@@ -4,7 +4,7 @@
  */
 
 import { store } from '../core/store.js';
-import { h, leere, icon, toast, note, sheet } from './components.js';
+import { h, leere, icon, toast, note, sheet, beschriftungenVerknuepfen } from './components.js';
 import { eur } from '../core/money.js';
 import { APP_VERSION, versionText } from '../core/version.js';
 import { pruefeUpdate, STATUS } from '../core/update.js';
@@ -132,6 +132,8 @@ async function zeichne() {
   }
   baueKopf(aktuelle.kopf || { titel: 'LaserKalk' });
   main.appendChild(aktuelle.el);
+  // Beschriftungen nachverknüpfen, die eine Ansicht von Hand gebaut hat.
+  beschriftungenVerknuepfen(main);
   window.scrollTo(0, 0);
 }
 
