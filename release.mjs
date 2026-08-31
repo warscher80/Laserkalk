@@ -34,7 +34,8 @@
  * später nicht über eine bestehende Installation aktualisieren.
  */
 
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
+import { inflateRawSync } from 'node:zlib';
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync, copyFileSync, readdirSync, unlinkSync, cpSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -79,13 +80,36 @@ function abbruch(grund, rat) {
   process.exit(1);
 }
 
+/**
+ * Führt ein Programm aus — auch aus der Windows-Eingabeaufforderung.
+ *
+ * Unter Windows sind `npm`, `npx` und `gradlew` KEINE Programme, sondern
+ * Batch-Dateien. Node startet sie seit Version 20 aus Sicherheitsgründen nur
+ * noch über die Kommandozeile; ein direkter Aufruf endet mit EINVAL. Deshalb
+ * laufen genau diese über die Shell, alles andere direkt.
+ */
 function lauf(befehl, argumente, opts = {}) {
-  return execFileSync(befehl, argumente, {
+  const win = process.platform === 'win32';
+  const brauchtShell = win && /^(npm|npx|gradlew)(\.(cmd|bat))?$/i.test(befehl.replace(/^\.[/\\]/, ''));
+  const gemeinsam = {
     cwd: opts.cwd || WURZEL, encoding: 'utf8',
     stdio: opts.leise ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     env: { ...process.env, ...(opts.env || {}) },
-  });
+  };
+  const e = brauchtShell
+    ? spawnSync(`${zitiere(befehl)} ${argumente.map(zitiere).join(' ')}`, { ...gemeinsam, shell: true })
+    : spawnSync(befehl, argumente, gemeinsam);
+
+  if (e.error) throw e.error;
+  if (e.status !== 0) {
+    const fehler = new Error(`${befehl} endete mit Code ${e.status}`);
+    fehler.stdout = e.stdout; fehler.stderr = e.stderr;
+    throw fehler;
+  }
+  return e.stdout || '';
 }
+/** Setzt Anführungszeichen, wo ein Pfad Leerzeichen enthalten kann (C:\\Program Files\\…). */
+function zitiere(t) { return /[\s&|<>^]/.test(t) ? `"${t}"` : t; }
 const git = (...a) => execSync(`git ${a.join(' ')}`, { cwd: WURZEL, encoding: 'utf8' }).trim();
 
 /** Ersetzt genau EIN Vorkommen – sonst Abbruch. Verhindert stille Halbersetzungen. */
@@ -98,6 +122,55 @@ function ersetze(datei, alt, neu) {
       'Die Datei hat sich verändert – bitte die Stelle von Hand prüfen.');
   }
   writeFileSync(pfad, inhalt.replace(alt, neu));
+}
+
+/**
+ * Liest Einträge aus einem APK (= ZIP), ohne externes `unzip`.
+ *
+ * Gebraucht wird das, um das FERTIGE Paket gegenzuprüfen statt der
+ * Quelldateien. Unter Windows gibt es kein `unzip`, und eine zusätzliche
+ * Abhängigkeit soll das Projekt nicht bekommen — deshalb hier direkt über
+ * das Zentralverzeichnis des ZIP-Formats und node:zlib.
+ *
+ * @returns {Map<string, Buffer>} Pfad im Paket → Inhalt
+ */
+function apkEintraege(pfad, praefix = '') {
+  const b = readFileSync(pfad);
+
+  // Ende des Zentralverzeichnisses (EOCD) von hinten suchen.
+  let eocd = -1;
+  for (let i = b.length - 22; i >= 0 && i > b.length - 22 - 65536; i--) {
+    if (b.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('Kein gültiges ZIP-Ende gefunden – ist das wirklich ein APK?');
+
+  const anzahl = b.readUInt16LE(eocd + 10);
+  let p = b.readUInt32LE(eocd + 16);
+  const heraus = new Map();
+
+  for (let i = 0; i < anzahl; i++) {
+    if (b.readUInt32LE(p) !== 0x02014b50) throw new Error('Zentralverzeichnis beschädigt.');
+    const methode = b.readUInt16LE(p + 10);
+    const groessePackt = b.readUInt32LE(p + 20);
+    const nameLen = b.readUInt16LE(p + 28);
+    const extraLen = b.readUInt16LE(p + 30);
+    const kommentarLen = b.readUInt16LE(p + 32);
+    const lokal = b.readUInt32LE(p + 42);
+    const name = b.toString('utf8', p + 46, p + 46 + nameLen);
+    p += 46 + nameLen + extraLen + kommentarLen;
+
+    if (praefix && !name.startsWith(praefix)) continue;
+    if (name.endsWith('/')) continue;
+
+    // Der lokale Kopf hat eigene Längenangaben – die des Zentralverzeichnisses
+    // dürfen dafür nicht verwendet werden.
+    const lNameLen = b.readUInt16LE(lokal + 26);
+    const lExtraLen = b.readUInt16LE(lokal + 28);
+    const start = lokal + 30 + lNameLen + lExtraLen;
+    const roh = b.subarray(start, start + groessePackt);
+    heraus.set(name, methode === 0 ? Buffer.from(roh) : inflateRawSync(roh));
+  }
+  return heraus;
 }
 
 /* ------------------------------------------------------------------ */
@@ -237,26 +310,23 @@ if (!NUR_WEB) {
   ok(`${ziel} fertig (${mb} MB)`);
 
   /* --- Gegenprüfung AM PAKET, nicht an den Quelldateien --- */
-  const auspacken = mkdtempSync(join(tmpdir(), 'laserkalk-apk-'));
-  try {
-    lauf('unzip', ['-qo', apkPfad, 'assets/public/*', '-d', auspacken], { leise: true });
-    const imPaket = join(auspacken, 'assets/public');
-    const vJs = readFileSync(join(imPaket, 'js/core/version.js'), 'utf8');
-    const cJs = readFileSync(join(imPaket, 'sw.js'), 'utf8');
-    if (!vJs.includes(`code: ${neuCode}`) || !vJs.includes(`name: '${neuName}'`)) {
-      abbruch('Im APK steckt eine andere Version als erwartet.', 'Wurde cap sync ausgeführt?');
-    }
-    if (!cJs.includes(`laserkalk-${neuName}-${neuCode}`)) {
-      abbruch('Im APK steckt eine alte Cache-Kennung.');
-    }
-    // Jede Datei, die der Service Worker offline ausliefern will, muss drin sein.
-    const liste = [...cJs.match(/const DATEIEN\s*=\s*\[([\s\S]*?)\];/)[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
-    const fehlend = liste.filter(d => d !== './' && !existsSync(join(imPaket, d.replace(/^\.\//, ''))));
-    if (fehlend.length) abbruch(`Im APK fehlen Dateien, die sw.js offline ausliefern will: ${fehlend.join(', ')}`);
-    ok(`Paket geprüft: Version stimmt, alle ${liste.length} Offline-Dateien enthalten`);
-  } finally {
-    rmSync(auspacken, { recursive: true, force: true });
+  const imPaket = apkEintraege(apkPfad, 'assets/public/');
+  const holen = (p) => imPaket.get('assets/public/' + p);
+  const alsText = (p) => { const b = holen(p); return b ? b.toString('utf8') : null; };
+
+  const vJs = alsText('js/core/version.js');
+  const cJs = alsText('sw.js');
+  if (!vJs || !cJs) abbruch('Im APK fehlen version.js oder sw.js.', 'Wurde cap sync ausgeführt?');
+  if (!vJs.includes(`code: ${neuCode}`) || !vJs.includes(`name: '${neuName}'`)) {
+    abbruch('Im APK steckt eine andere Version als erwartet.', 'Wurde cap sync ausgeführt?');
   }
+  if (!cJs.includes(`laserkalk-${neuName}-${neuCode}`)) abbruch('Im APK steckt eine alte Cache-Kennung.');
+
+  // Jede Datei, die der Service Worker offline ausliefern will, muss drin sein.
+  const liste = [...cJs.match(/const DATEIEN\s*=\s*\[([\s\S]*?)\];/)[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
+  const fehlend = liste.filter(d => d !== './' && !holen(d.replace(/^\.\//, '')));
+  if (fehlend.length) abbruch(`Im APK fehlen Dateien, die sw.js offline ausliefern will: ${fehlend.join(', ')}`);
+  ok(`Paket geprüft: Version stimmt, alle ${liste.length} Offline-Dateien enthalten`);
 }
 
 /* ------------------------------------------------------------------ */
